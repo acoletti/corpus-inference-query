@@ -1,20 +1,18 @@
-# Placeholder writing-corpus manifest.
-# M1: not parsed (specs are still hardcoded in corpus_config.py).
-# M2: replaced by a real loader that reads this file.
+# Writing-corpus manifest. Loaded by load_corpus_specs() in corpus_config.py.
 
 [[source]]
 shorthand = "HTWS"
 path = "references/fish-howtowriteasentence/"
-title = "How to Write a Sentence (fixture stub)"
+title = "How to Write a Sentence"
 author = "Stanley Fish"
 year = 2011
-default_style = ["subordinating"]
+default_style = ["subordinating", "additive"]
 default_type = ["essay", "book"]
 
 [[source]]
 shorthand = "Strunk"
 path = "references/strunk-elements-of-style/"
-title = "Elements of Style (fixture stub)"
+title = "Elements of Style"
 author = "Strunk and White"
 year = 1959
 default_style = []

@@ -1,183 +1,157 @@
 """MCP stdio server for writing corpus queries."""
-
 from __future__ import annotations
-
 import logging
 import os
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from .corpus_config import CORPUS_SPECS
-from .indexer import Section, build_index
-from .search import _format_results, _parse_citation, search
-from .vector_store import build_vector_store, vector_search
+from .corpus_repository import CorpusRepository
+from .tool_responses import format_check_stub, format_list_corpora, format_reload
 
 logger = logging.getLogger(__name__)
 
-# Resolve corpus path from env or default
 _DEFAULT_CORPUS_PATH = os.path.expanduser("~/Documents/writing-corpus")
-CORPUS_PATH = Path(
-    os.path.expanduser(
-        os.environ.get("CORPUS_INFERENCE_PATH", _DEFAULT_CORPUS_PATH)
-    )
-)
+CORPUS_PATH = Path(os.path.expanduser(os.environ.get("CORPUS_INFERENCE_PATH", _DEFAULT_CORPUS_PATH)))
 
 mcp = FastMCP("corpus-inference-query")
 
-# Token / character budget constants.
-# _CHARS_PER_TOKEN: rough token-to-char ratio used throughout; matches search.py:118.
-# _MAX_TOKENS_CEILING: cap for the max_tokens parameter (~16k chars), avoids
-#   oversized MCP tool responses and guards against non-positive caller values.
 _CHARS_PER_TOKEN = 4
 _MAX_TOKENS_CEILING = 4000
 _TOP_K_CEILING = 20
 
-# Module-level index — built on first query (lazy)
-_index: list[Section] | None = None
-
-# Sentinel distinguishing "not yet tried" (None) from "unavailable" after failure.
-_VECTOR_STORE_UNAVAILABLE = object()
-_vector_store = None  # None | _VECTOR_STORE_UNAVAILABLE | lancedb.Table
+_repo: CorpusRepository | None = None
 
 
-def _get_vector_store():
-    """Return the lancedb Table, or None when vector extras are not installed."""
-    global _vector_store
-    if _vector_store is None:
-        try:
-            _vector_store = build_vector_store(_get_index())
-        except Exception:
-            logger.warning(
-                "build_vector_store failed; vector search unavailable for this process",
-                exc_info=True,
-            )
-            _vector_store = _VECTOR_STORE_UNAVAILABLE
-    if _vector_store is _VECTOR_STORE_UNAVAILABLE:
-        return None
-    return _vector_store
-
-
-def _get_index() -> list[Section]:
-    global _index
-    if _index is None:
-        if not CORPUS_PATH.exists():
-            raise RuntimeError(
-                f"Corpus path does not exist: {CORPUS_PATH}\n"
-                f"Set CORPUS_INFERENCE_PATH to the correct location."
-            )
-        _index = build_index(CORPUS_PATH)
-    return _index
-
-
-def _execute_natural_language_search(index, query, max_chars, top_k):
-    """Try vector search; fall back to None so caller can use keyword search."""
-    try:
-        table = _get_vector_store()
-        if table is not None:
-            nl_sections = vector_search(table, index, query, top_k)
-            if nl_sections:
-                return _format_results(nl_sections, max_chars)
-    except Exception:
-        logger.error(
-            "vector_search failed, falling back to keyword search",
-            exc_info=True,
-        )
-    return None
+def _get_repo() -> CorpusRepository:
+    global _repo
+    if _repo is None:
+        _repo = CorpusRepository(CORPUS_PATH)
+    return _repo
 
 
 @mcp.tool()
-def query(
-    query: str,  # named 'query' to match the FastMCP schema field exposed to clients
-    max_tokens: int = 1500,
-    top_k: int = 3,
-) -> str:
-    """Query the writing corpus by shorthand citation or natural language.
-
-    Examples:
-      - "HTWS §Subordinating" → Fish, How to Write a Sentence, Subordinating chapter
-      - "Strunk §Omit Needless Words" → Strunk and White, omit needless words
-      - "subordinating sentence dependent clause" → natural language search across all corpora
+def query(query: str, max_tokens: int = 1500, top_k: int = 3, style: list[str] | None = None, type_filter: list[str] | None = None, corpus: str | None = None) -> str:
+    """Query the writing corpus by shorthand citation or natural language, with optional style/type/corpus filters.
 
     Args:
-        query: The query string — a shorthand citation (e.g. "HTWS §Subordinating")
-               or natural language (e.g. "additive style parataxis").
-        max_tokens: Target response size in tokens (approximate). Default 1500, max 4000.
-        top_k: Number of sections to return for natural language queries. Default 3, max 20.
-
-    Returns:
-        Matching corpus excerpts formatted with citation headers.
+        query: Citation (e.g. "HTWS §Subordinating") or natural language.
+        max_tokens: Target response size in tokens (approx). Default 1500, max 4000.
+        top_k: Number of sections to return. Default 3, max 20.
+        style: Style tags to filter by (AND semantics, e.g. ["subordinating"]).
+        type_filter: Type tags to filter by (AND semantics, e.g. ["essay"]).
+        corpus: Corpus shorthand to restrict to (e.g. "HTWS").
     """
-    index = _get_index()
     max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
     top_k = max(1, min(top_k, _TOP_K_CEILING))
-    max_chars = max_tokens * _CHARS_PER_TOKEN  # compute once; used by both search paths
-
-    # Citation queries (shorthand + §) skip vector search. Note: _parse_citation is
-    # called here to route and then called again inside search() — both call sites
-    # must stay in sync on what constitutes a valid citation.
-    if _parse_citation(query)[0] is not None:
-        return search(index, query, max_chars=max_chars, top_k=top_k)
-
-    result = _execute_natural_language_search(index, query, max_chars, top_k)
-    if result is not None:
-        return result
-
-    return search(index, query, max_chars=max_chars, top_k=top_k)
+    return _get_repo().search(query, top_k=top_k, style=style, type_filter=type_filter, corpus=corpus, max_chars=max_tokens * _CHARS_PER_TOKEN)
 
 
 @mcp.tool()
 def list_corpora() -> str:
-    """List all available corpora, their shorthands, and example citations.
+    """List all available corpora with metadata, style/type tags, and section counts."""
+    return format_list_corpora(_get_repo().list_corpora())
 
-    Returns:
-        A formatted table of corpus IDs, shorthands, section counts, and
-        up to 3 example citations per corpus to aid query construction.
+
+@mcp.tool()
+def lookup_citation(citation: str, max_tokens: int = 1500) -> str:
+    """Resolve a shorthand citation to its full section text (e.g. "HTWS §Subordinating").
+
+    Args:
+        citation: Shorthand citation string.
+        max_tokens: Target response size. Default 1500, max 4000.
     """
-    index = _get_index()
-    lines = [
-        "| Shorthand | Corpus | Sections | Example citations |",
-        "|-----------|--------|----------|-------------------|",
-    ]
-    for spec in CORPUS_SPECS:
-        corpus_sections = [s for s in index if s.shorthand == spec.shorthand]
-        count = len(corpus_sections)
-        examples = ", ".join(f"`{s.citation}`" for s in corpus_sections[:3])
-        lines.append(f"| `{spec.shorthand}` | {spec.description} | {count} | {examples} |")
-    lines.append(f"\n**Total sections indexed**: {len(index)}")
-    lines.append(f"**Corpus path**: `{CORPUS_PATH}`")
-    return "\n".join(lines)
+    max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
+    return _get_repo().lookup_citation(citation, max_chars=max_tokens * _CHARS_PER_TOKEN)
+
+
+@mcp.tool()
+def find_exemplars(style: list[str] | None = None, type_filter: list[str] | None = None, length: str | None = None, top_k: int = 5, max_tokens: int = 1500) -> str:
+    """Find exemplar writing passages filtered by style tags, type tags, and length.
+
+    Args:
+        style: Style tags to match (e.g. ["subordinating"]).
+        type_filter: Type tags to match (e.g. ["essay"]).
+        length: Length bucket: "short" (<500 chars), "medium" (500-2000), "long" (>2000).
+        top_k: Number of results. Default 5, max 20.
+        max_tokens: Target response size. Default 1500, max 4000.
+    """
+    top_k = max(1, min(top_k, _TOP_K_CEILING))
+    max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
+    return _get_repo().find_exemplars(style=style, type_filter=type_filter, length=length, top_k=top_k, max_chars=max_tokens * _CHARS_PER_TOKEN)
+
+
+@mcp.tool()
+def check_against_standards(text: str, types: list[str] | None = None) -> str:
+    """Check writing against standards (M2 stub — full detectors in M3).
+
+    Args:
+        text: Writing to check.
+        types: Writing type context (e.g. ["essay"]).
+    """
+    return format_check_stub(_get_repo().check_against_standards(text, types))
+
+
+@mcp.tool()
+def find_similar_voice(text: str, corpus: str = "personal", top_k: int = 5, max_tokens: int = 1500) -> str:
+    """Find corpus passages with voice similar to provided text.
+
+    Args:
+        text: Text to match voice against.
+        corpus: Corpus shorthand to search within. Default "personal".
+        top_k: Number of results. Default 5, max 20.
+        max_tokens: Target response size. Default 1500, max 4000.
+    """
+    top_k = max(1, min(top_k, _TOP_K_CEILING))
+    max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
+    return _get_repo().find_similar_voice(text, top_k=top_k, corpus=corpus, max_chars=max_tokens * _CHARS_PER_TOKEN)
+
+
+@mcp.tool()
+def suggest_opening(type_name: str, style: list[str] | None = None, topic: str | None = None, top_k: int = 5, max_tokens: int = 1500) -> str:
+    """Suggest opening sentences from the corpus for a given writing type and style.
+
+    Args:
+        type_name: Writing type (e.g. "essay", "email", "book").
+        style: Style tags to filter by.
+        topic: Optional topic hint to rank results.
+        top_k: Number of results. Default 5, max 20.
+        max_tokens: Target response size. Default 1500, max 4000.
+    """
+    top_k = max(1, min(top_k, _TOP_K_CEILING))
+    max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
+    return _get_repo().suggest_opening(type_name, style=style, topic=topic, top_k=top_k, max_chars=max_tokens * _CHARS_PER_TOKEN)
+
+
+@mcp.tool()
+def suggest_rewrite(text: str, target_style: str, top_k: int = 5, max_tokens: int = 1500) -> str:
+    """Return exemplar passages in a target style, ranked by similar length to the input text.
+
+    Args:
+        text: Text you want to rewrite (used for length matching).
+        target_style: Style tag to match (e.g. "subordinating", "additive").
+        top_k: Number of results. Default 5, max 20.
+        max_tokens: Target response size. Default 1500, max 4000.
+    """
+    top_k = max(1, min(top_k, _TOP_K_CEILING))
+    max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
+    return _get_repo().suggest_rewrite(text, target_style, top_k=top_k, max_chars=max_tokens * _CHARS_PER_TOKEN)
 
 
 @mcp.tool()
 def reload() -> str:
-    """Reload the corpus index and vector store from disk.
-
-    Use after editing corpus files to pick up changes without restarting
-    the MCP server process. The vector store is cleared and will be rebuilt
-    lazily on the next natural-language query.
-
-    Returns:
-        A summary confirming the section count after reload.
-    """
-    global _index, _vector_store
-    _index = None
-    _vector_store = None  # reset sentinel so next NL query rebuilds the store
-    index = _get_index()
-    return f"Reloaded {len(index)} sections from `{CORPUS_PATH}`."
+    """Reload the corpus index from disk. Use after editing corpus files."""
+    global _repo
+    _repo = None
+    result = _get_repo().reload()
+    return format_reload(result)
 
 
 def main():
-    # Warm up index and vector store at startup so the first query doesn't pay
-    # the build latency. Corpus-missing errors are caught and logged; the server
-    # starts regardless and will surface a clear error on the first query.
     try:
-        _get_vector_store()
+        _get_repo()._get_vector_store()
     except Exception:
-        logger.warning(
-            "Startup warmup failed; index will be built on first query",
-            exc_info=True,
-        )
+        logger.warning("Startup warmup failed; index will be built on first query", exc_info=True)
     mcp.run(transport="stdio")
 
 

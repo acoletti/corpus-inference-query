@@ -1,8 +1,8 @@
-"""Unit tests for the query() MCP tool in server.py."""
+"""Unit tests for the MCP tools in server.py."""
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,13 +14,25 @@ os.environ.setdefault(
     os.path.join(os.path.dirname(__file__), "fixtures", "corpus"),
 )
 
+# Reset _repo so the fixture path set above is picked up even if other tests
+# have already imported and initialised it.
+import corpus_inference_query.server as _srv_mod
+_srv_mod._repo = None
+
 from corpus_inference_query.server import (
     _CHARS_PER_TOKEN,
     _MAX_TOKENS_CEILING,
     _TOP_K_CEILING,
+    _get_repo,
+    check_against_standards,
+    find_exemplars,
+    find_similar_voice,
     list_corpora,
+    lookup_citation,
     query,
     reload,
+    suggest_opening,
+    suggest_rewrite,
 )
 
 
@@ -30,7 +42,6 @@ from corpus_inference_query.server import (
 
 def _make_section(citation="CC §1", content="some content"):
     from corpus_inference_query.indexer import Section
-    # Derive shorthand from citation prefix (before §) if present
     shorthand = citation.split(" §")[0] if " §" in citation else "CC"
     return Section(
         corpus_id="test",
@@ -44,25 +55,104 @@ def _make_section(citation="CC §1", content="some content"):
     )
 
 
+def _make_mock_repo(**overrides):
+    """Return a MagicMock that mimics CorpusRepository's public API."""
+    mock = MagicMock()
+    mock.search.return_value = "search result"
+    mock.list_corpora.return_value = []
+    mock.lookup_citation.return_value = "citation result"
+    mock.find_exemplars.return_value = "exemplars result"
+    mock.check_against_standards.return_value = {
+        "status": "not_yet_implemented",
+        "text_length": 9,
+        "types_provided": [],
+        "skipped_rules": ["all"],
+    }
+    mock.find_similar_voice.return_value = "voice result"
+    mock.suggest_opening.return_value = "opening result"
+    mock.suggest_rewrite.return_value = "rewrite result"
+    from corpus_inference_query.corpus_repository import ReloadResult
+    mock.reload.return_value = ReloadResult(status="ok", corpora_count=2, doc_count=5)
+    for k, v in overrides.items():
+        setattr(mock, k, v)
+    return mock
+
+
 # ---------------------------------------------------------------------------
-# max_tokens clamping
+# Fixture-based integration tests (real corpus on disk)
+# ---------------------------------------------------------------------------
+
+class TestIntegration:
+    """Smoke tests that exercise all 9 tools against the fixture corpus."""
+
+    def setup_method(self):
+        # Reset repo so each test gets a fresh instance from the fixture path.
+        import corpus_inference_query.server as srv
+        srv._repo = None
+
+    def test_list_corpora_returns_table_with_shorthand_header(self):
+        result = list_corpora()
+        assert isinstance(result, str)
+        assert "Shorthand" in result
+
+    def test_query_citation_returns_string(self):
+        result = query("HTWS §")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_query_nl_returns_string(self):
+        result = query("subordinating style")
+        assert isinstance(result, str)
+
+    def test_query_nl_with_style_filter_returns_string(self):
+        result = query("subordinating style", style=["subordinating"])
+        assert isinstance(result, str)
+
+    def test_lookup_citation_returns_string(self):
+        result = lookup_citation("HTWS §Subordinating")
+        assert isinstance(result, str)
+
+    def test_find_exemplars_with_style_returns_string(self):
+        result = find_exemplars(style=["subordinating"])
+        assert isinstance(result, str)
+
+    def test_check_against_standards_contains_not_yet_implemented(self):
+        result = check_against_standards("Some text")
+        assert isinstance(result, str)
+        assert "not yet implemented" in result
+
+    def test_find_similar_voice_returns_string(self):
+        result = find_similar_voice("Some text", corpus="HTWS")
+        assert isinstance(result, str)
+
+    def test_suggest_opening_returns_string(self):
+        result = suggest_opening("essay")
+        assert isinstance(result, str)
+
+    def test_suggest_rewrite_returns_string(self):
+        result = suggest_rewrite("short text", target_style="subordinating")
+        assert isinstance(result, str)
+
+    def test_reload_returns_reloaded(self):
+        result = reload()
+        assert isinstance(result, str)
+        assert "Reloaded" in result
+
+
+# ---------------------------------------------------------------------------
+# max_tokens clamping (via mocked repo)
 # ---------------------------------------------------------------------------
 
 class TestMaxTokensClamp:
     """query() must clamp max_tokens to [1, _MAX_TOKENS_CEILING] before use."""
 
     def _captured_max_chars(self, max_tokens_input):
-        """Return the max_chars value that reached search() for a citation query."""
+        """Return the max_chars value passed to repo.search() for a given max_tokens."""
         captured = {}
-        with patch(
-            "corpus_inference_query.server._get_index",
-            return_value=[_make_section()],
-        ):
-            with patch(
-                "corpus_inference_query.server.search",
-                side_effect=lambda *a, **kw: captured.update(kw) or "",
-            ):
-                query("CC §1", max_tokens=max_tokens_input)
+        mock_repo = _make_mock_repo()
+        mock_repo.search.side_effect = lambda *a, **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            query("some query", max_tokens=max_tokens_input)
         return captured.get("max_chars")
 
     def test_clamp_zero(self):
@@ -85,164 +175,6 @@ class TestMaxTokensClamp:
 
 
 # ---------------------------------------------------------------------------
-# Citation routing (§ dispatch)
-# ---------------------------------------------------------------------------
-
-class TestCitationRouting:
-    """Queries containing § must route to search() and never touch vector_search."""
-
-    def test_citation_calls_search_not_vector(self):
-        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("corpus_inference_query.server.search", return_value="result") as mock_search:
-                with patch("corpus_inference_query.server.vector_search") as mock_vec:
-                    result = query("CC §Functions")
-        mock_search.assert_called_once()
-        mock_vec.assert_not_called()
-        assert result == "result"
-
-    def test_citation_passes_max_chars_not_max_tokens(self):
-        """search() must receive max_chars= (pre-computed), not max_tokens=."""
-        captured = {}
-        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch(
-                "corpus_inference_query.server.search",
-                side_effect=lambda *a, **kw: captured.update(kw) or "",
-            ):
-                query("CC §1", max_tokens=500)
-        assert "max_chars" in captured
-        assert captured["max_chars"] == 500 * _CHARS_PER_TOKEN
-        assert "max_tokens" not in captured
-
-
-# ---------------------------------------------------------------------------
-# Natural-language vector path
-# ---------------------------------------------------------------------------
-
-class TestNaturalLanguageRouting:
-    """NL queries should attempt vector search, then fall back to keyword search."""
-
-    def test_nl_uses_vector_when_available(self):
-        mock_table = MagicMock()
-        section = _make_section()
-        with patch("corpus_inference_query.server._get_index", return_value=[section]):
-            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
-                with patch(
-                    "corpus_inference_query.server.vector_search",
-                    return_value=[section],
-                ):
-                    with patch(
-                        "corpus_inference_query.server._format_results",
-                        return_value="vector result",
-                    ) as mock_fmt:
-                        result = query("generator delegation")
-        mock_fmt.assert_called_once()
-        assert result == "vector result"
-
-    def test_nl_fallback_when_no_vector_store(self):
-        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("corpus_inference_query.server._get_vector_store", return_value=None):
-                with patch(
-                    "corpus_inference_query.server.search", return_value="keyword result"
-                ) as mock_search:
-                    result = query("generator delegation")
-        mock_search.assert_called_once()
-        assert result == "keyword result"
-
-    def test_nl_fallback_when_vector_returns_empty(self):
-        mock_table = MagicMock()
-        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
-                with patch("corpus_inference_query.server.vector_search", return_value=[]):
-                    with patch(
-                        "corpus_inference_query.server.search", return_value="keyword result"
-                    ) as mock_search:
-                        result = query("generator delegation")
-        mock_search.assert_called_once()
-        assert result == "keyword result"
-
-    def test_nl_fallback_on_vector_exception_calls_search(self):
-        mock_table = MagicMock()
-        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
-                with patch(
-                    "corpus_inference_query.server.vector_search",
-                    side_effect=RuntimeError("lancedb exploded"),
-                ):
-                    with patch(
-                        "corpus_inference_query.server.search", return_value="keyword result"
-                    ) as mock_search:
-                        result = query("generator delegation")
-        mock_search.assert_called_once()
-        assert result == "keyword result"
-
-    def test_nl_fallback_on_vector_exception_logs_error(self):
-        mock_table = MagicMock()
-        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
-                with patch(
-                    "corpus_inference_query.server.vector_search",
-                    side_effect=RuntimeError("lancedb exploded"),
-                ):
-                    with patch("corpus_inference_query.server.search", return_value=""):
-                        with patch("corpus_inference_query.server.logger") as mock_logger:
-                            query("generator delegation")
-        mock_logger.error.assert_called_once()
-        call_kwargs = mock_logger.error.call_args
-        assert call_kwargs.kwargs.get("exc_info") is True
-
-    def test_nl_vector_receives_precomputed_max_chars(self):
-        """_format_results must receive max_chars = max_tokens * _CHARS_PER_TOKEN."""
-        mock_table = MagicMock()
-        section = _make_section()
-        captured = {}
-        with patch("corpus_inference_query.server._get_index", return_value=[section]):
-            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
-                with patch("corpus_inference_query.server.vector_search", return_value=[section]):
-                    with patch(
-                        "corpus_inference_query.server._format_results",
-                        side_effect=lambda secs, mc: captured.update({"max_chars": mc}) or "",
-                    ):
-                        query("factory pattern", max_tokens=800)
-        assert captured["max_chars"] == 800 * _CHARS_PER_TOKEN
-
-
-# ---------------------------------------------------------------------------
-# § routing: only recognised citation patterns skip vector search
-# ---------------------------------------------------------------------------
-
-class TestSectionSignHeuristic:
-    """Only queries with a recognised shorthand route to citation search.
-
-    A bare § without a known shorthand (e.g. 'what does § mean?') must go
-    through the normal NL / vector path, not citation search.
-    """
-
-    def test_nl_query_with_bare_section_sign_uses_vector_path(self):
-        """'what does § mean?' has no shorthand — must not short-circuit to search()."""
-        mock_table = MagicMock()
-        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
-                with patch(
-                    "corpus_inference_query.server.vector_search",
-                    return_value=[_make_section()],
-                ) as mock_vec:
-                    with patch(
-                        "corpus_inference_query.server._format_results", return_value=""
-                    ):
-                        query("what does § mean in python?")
-        mock_vec.assert_called_once()
-
-    def test_valid_citation_with_section_sign_skips_vector(self):
-        """'CC §Functions' has a recognised shorthand — must skip vector search."""
-        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("corpus_inference_query.server.search", return_value="") as mock_search:
-                with patch("corpus_inference_query.server.vector_search") as mock_vec:
-                    query("CC §Functions")
-        mock_search.assert_called_once()
-        mock_vec.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
 # top_k clamping
 # ---------------------------------------------------------------------------
 
@@ -251,12 +183,10 @@ class TestTopKClamp:
 
     def _captured_top_k(self, top_k_input):
         captured = {}
-        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch(
-                "corpus_inference_query.server.search",
-                side_effect=lambda *a, **kw: captured.update(kw) or "",
-            ):
-                query("CC §1", top_k=top_k_input)
+        mock_repo = _make_mock_repo()
+        mock_repo.search.side_effect = lambda *a, **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            query("some query", top_k=top_k_input)
         return captured.get("top_k")
 
     def test_clamp_zero(self):
@@ -276,86 +206,244 @@ class TestTopKClamp:
 
 
 # ---------------------------------------------------------------------------
+# query() delegates to repo.search()
+# ---------------------------------------------------------------------------
+
+class TestQueryDelegation:
+    """query() must pass all parameters through to repo.search()."""
+
+    def test_query_passes_style_filter(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.search.side_effect = lambda *a, **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            query("test", style=["subordinating"])
+        assert captured.get("style") == ["subordinating"]
+
+    def test_query_passes_type_filter(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.search.side_effect = lambda *a, **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            query("test", type_filter=["essay"])
+        assert captured.get("type_filter") == ["essay"]
+
+    def test_query_passes_corpus_filter(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.search.side_effect = lambda *a, **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            query("test", corpus="HTWS")
+        assert captured.get("corpus") == "HTWS"
+
+    def test_query_returns_repo_result(self):
+        mock_repo = _make_mock_repo()
+        mock_repo.search.return_value = "expected output"
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            result = query("test")
+        assert result == "expected output"
+
+
+# ---------------------------------------------------------------------------
+# lookup_citation
+# ---------------------------------------------------------------------------
+
+class TestLookupCitation:
+    def test_passes_citation_and_max_chars(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.lookup_citation.side_effect = lambda *a, **kw: captured.update({"args": a, "kw": kw}) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            lookup_citation("HTWS §Subordinating", max_tokens=500)
+        assert captured["args"][0] == "HTWS §Subordinating"
+        assert captured["kw"]["max_chars"] == 500 * _CHARS_PER_TOKEN
+
+    def test_max_tokens_clamped_above_ceiling(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.lookup_citation.side_effect = lambda *a, **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            lookup_citation("HTWS §Subordinating", max_tokens=99999)
+        assert captured["max_chars"] == _MAX_TOKENS_CEILING * _CHARS_PER_TOKEN
+
+
+# ---------------------------------------------------------------------------
+# find_exemplars
+# ---------------------------------------------------------------------------
+
+class TestFindExemplars:
+    def test_passes_style_and_type_filter(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.find_exemplars.side_effect = lambda **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            find_exemplars(style=["subordinating"], type_filter=["essay"], length="short")
+        assert captured["style"] == ["subordinating"]
+        assert captured["type_filter"] == ["essay"]
+        assert captured["length"] == "short"
+
+    def test_top_k_clamped(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.find_exemplars.side_effect = lambda **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            find_exemplars(top_k=999)
+        assert captured["top_k"] == _TOP_K_CEILING
+
+
+# ---------------------------------------------------------------------------
+# check_against_standards
+# ---------------------------------------------------------------------------
+
+class TestCheckAgainstStandards:
+    def test_returns_not_yet_implemented_message(self):
+        mock_repo = _make_mock_repo()
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            result = check_against_standards("Some text")
+        assert "not yet implemented" in result
+
+    def test_passes_text_and_types(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.check_against_standards.side_effect = (
+            lambda text, types=None: captured.update({"text": text, "types": types})
+            or {"status": "not_yet_implemented", "text_length": 0, "types_provided": [], "skipped_rules": []}
+        )
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            check_against_standards("hello", types=["essay"])
+        assert captured["text"] == "hello"
+        assert captured["types"] == ["essay"]
+
+
+# ---------------------------------------------------------------------------
+# find_similar_voice
+# ---------------------------------------------------------------------------
+
+class TestFindSimilarVoice:
+    def test_passes_corpus_and_top_k(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.find_similar_voice.side_effect = lambda *a, **kw: captured.update({"args": a, "kw": kw}) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            find_similar_voice("text", corpus="HTWS", top_k=3)
+        assert captured["kw"]["corpus"] == "HTWS"
+        assert captured["kw"]["top_k"] == 3
+
+    def test_top_k_clamped(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.find_similar_voice.side_effect = lambda *a, **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            find_similar_voice("text", top_k=999)
+        assert captured["top_k"] == _TOP_K_CEILING
+
+
+# ---------------------------------------------------------------------------
+# suggest_opening
+# ---------------------------------------------------------------------------
+
+class TestSuggestOpening:
+    def test_passes_type_name_style_topic(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.suggest_opening.side_effect = lambda *a, **kw: captured.update({"args": a, "kw": kw}) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            suggest_opening("essay", style=["subordinating"], topic="writing")
+        assert captured["args"][0] == "essay"
+        assert captured["kw"]["style"] == ["subordinating"]
+        assert captured["kw"]["topic"] == "writing"
+
+    def test_top_k_clamped(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.suggest_opening.side_effect = lambda *a, **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            suggest_opening("essay", top_k=999)
+        assert captured["top_k"] == _TOP_K_CEILING
+
+
+# ---------------------------------------------------------------------------
+# suggest_rewrite
+# ---------------------------------------------------------------------------
+
+class TestSuggestRewrite:
+    def test_passes_text_and_target_style(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.suggest_rewrite.side_effect = lambda *a, **kw: captured.update({"args": a, "kw": kw}) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            suggest_rewrite("short text", "subordinating", top_k=3)
+        assert captured["args"][0] == "short text"
+        assert captured["args"][1] == "subordinating"
+        assert captured["kw"]["top_k"] == 3
+
+    def test_top_k_clamped(self):
+        captured = {}
+        mock_repo = _make_mock_repo()
+        mock_repo.suggest_rewrite.side_effect = lambda *a, **kw: captured.update(kw) or ""
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            suggest_rewrite("text", "subordinating", top_k=999)
+        assert captured["top_k"] == _TOP_K_CEILING
+
+
+# ---------------------------------------------------------------------------
 # reload tool
 # ---------------------------------------------------------------------------
 
 class TestReload:
-    """reload() must clear both cached globals and rebuild the index."""
+    """reload() must reset _repo and return a message containing 'Reloaded'."""
 
-    def _patch_corpus_exists(self):
-        """Context manager that makes CORPUS_PATH.exists() return True."""
-        from unittest.mock import PropertyMock
-        from pathlib import Path
-        mock_path = MagicMock(spec=Path)
-        mock_path.exists.return_value = True
-        return patch("corpus_inference_query.server.CORPUS_PATH", mock_path)
-
-    def test_reload_clears_index_and_rebuilds(self):
+    def setup_method(self):
         import corpus_inference_query.server as srv
-        sections = [_make_section()]
-        with self._patch_corpus_exists():
-            with patch(
-                "corpus_inference_query.server.build_index", return_value=sections
-            ) as mock_build:
-                result = reload()
-        mock_build.assert_called_once()
-        assert "1" in result  # section count in the return message
+        srv._repo = None
 
-    def test_reload_resets_vector_store_sentinel(self):
-        """After reload, _vector_store is None (not the unavailable sentinel)."""
-        import corpus_inference_query.server as srv
-        with self._patch_corpus_exists():
-            with patch("corpus_inference_query.server.build_index", return_value=[_make_section()]):
-                reload()
-        # After reload _vector_store should be None (ready to rebuild on next NL
-        # query), not a stale sentinel.
-        assert srv._vector_store is None
-
-    def test_reload_return_message_includes_section_count(self):
-        sections = [_make_section(), _make_section(), _make_section()]
-        with self._patch_corpus_exists():
-            with patch("corpus_inference_query.server.build_index", return_value=sections):
-                result = reload()
-        assert "3" in result
+    def test_reload_resets_repo_and_returns_reloaded(self):
+        result = reload()
         assert "Reloaded" in result
+
+    def test_reload_result_contains_section_count(self):
+        result = reload()
+        # The fixture corpus has sections; count should appear in the message
+        assert any(ch.isdigit() for ch in result)
+
+    def test_reload_resets_repo_global(self):
+        import corpus_inference_query.server as srv
+        # Ensure _repo is set before calling reload
+        _ = _get_repo()
+        assert srv._repo is not None
+        reload()
+        # reload() sets _repo = None then immediately rebuilds it via _get_repo()
+        # so after the call _repo is a fresh instance (not None)
+        assert srv._repo is not None
 
 
 # ---------------------------------------------------------------------------
-# list_corpora — example citations
+# list_corpora — table format
 # ---------------------------------------------------------------------------
 
 class TestListCorpora:
-    """list_corpora() must include example citations for each corpus."""
+    """list_corpora() must return a markdown table with Shorthand header."""
 
-    def _run_list_corpora(self, sections):
-        with patch("corpus_inference_query.server._get_index", return_value=sections):
-            return list_corpora()
-
-    def test_output_includes_example_citations(self):
-        sections = [
-            _make_section("HTWS §Ch1", "content"),
-            _make_section("HTWS §Ch2", "content"),
-        ]
-        result = self._run_list_corpora(sections)
-        assert "`HTWS §Ch1`" in result
-        assert "`HTWS §Ch2`" in result
-
-    def test_at_most_three_examples_per_corpus(self):
-        sections = [_make_section(f"HTWS §S{i}", "x") for i in range(10)]
-        result = self._run_list_corpora(sections)
-        # Only first 3 citations should appear in the table row for HTWS
-        htws_row = [line for line in result.splitlines() if "| `HTWS`" in line][0]
-        assert htws_row.count("`HTWS §") == 3
-
-    def test_section_count_in_output(self):
-        sections = [_make_section(f"HTWS §S{i}", "x") for i in range(5)]
-        result = self._run_list_corpora(sections)
-        assert "5" in result
+    def test_output_contains_shorthand_header(self):
+        result = list_corpora()
+        assert "Shorthand" in result
 
     def test_output_is_markdown_table(self):
-        result = self._run_list_corpora([_make_section()])
-        assert "| Shorthand |" in result
-        assert "| Example citations |" in result
+        result = list_corpora()
+        assert "|" in result
+
+    def test_output_contains_corpus_names(self):
+        result = list_corpora()
+        # Fixture corpus has HTWS and Strunk
+        assert "HTWS" in result
+        assert "Strunk" in result
+
+    def test_empty_corpora_returns_no_corpora_message(self):
+        mock_repo = _make_mock_repo()
+        mock_repo.list_corpora.return_value = []
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            result = list_corpora()
+        assert "No corpora" in result
 
 
 # ---------------------------------------------------------------------------
@@ -367,10 +455,9 @@ class TestStartupWarmup:
 
     def test_warmup_called_before_mcp_run(self):
         call_order = []
-        with patch(
-            "corpus_inference_query.server._get_vector_store",
-            side_effect=lambda: call_order.append("warmup"),
-        ):
+        mock_repo = _make_mock_repo()
+        mock_repo._get_vector_store.side_effect = lambda: call_order.append("warmup")
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
             with patch(
                 "corpus_inference_query.server.mcp.run",
                 side_effect=lambda **kw: call_order.append("run"),
@@ -382,10 +469,9 @@ class TestStartupWarmup:
     def test_warmup_failure_does_not_prevent_server_start(self):
         """A corpus-missing error at warmup must be swallowed so mcp.run() still fires."""
         ran = []
-        with patch(
-            "corpus_inference_query.server._get_vector_store",
-            side_effect=RuntimeError("corpus missing"),
-        ):
+        mock_repo = _make_mock_repo()
+        mock_repo._get_vector_store.side_effect = RuntimeError("corpus missing")
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
             with patch(
                 "corpus_inference_query.server.mcp.run",
                 side_effect=lambda **kw: ran.append(True),
@@ -396,18 +482,17 @@ class TestStartupWarmup:
 
 
 # ---------------------------------------------------------------------------
-# NL score threshold (search.py)
+# NL score threshold (search.py) — unchanged
 # ---------------------------------------------------------------------------
 
 class TestNLScoreThreshold:
     """_search_natural_language must filter out low-confidence matches."""
 
     def _run_nl_search(self, sections, query_str, top_k=5):
-        from corpus_inference_query.search import _NL_SCORE_THRESHOLD, _search_natural_language
+        from corpus_inference_query.search import _search_natural_language
         return _search_natural_language(sections, query_str, max_chars=4000, top_k=top_k)
 
     def _make_matching_section(self, name="generators"):
-        """Section whose name and keywords strongly match 'generators'."""
         from corpus_inference_query.indexer import Section
         return Section(
             corpus_id="test",
@@ -421,7 +506,6 @@ class TestNLScoreThreshold:
         )
 
     def _make_unrelated_section(self):
-        """Section with no overlap with 'generators yield delegation'."""
         from corpus_inference_query.indexer import Section
         return Section(
             corpus_id="test",
@@ -440,13 +524,11 @@ class TestNLScoreThreshold:
         assert "generators" in result.lower()
 
     def test_low_scoring_section_is_filtered(self):
-        """A section with no keyword overlap must not appear in results."""
         sections = [self._make_unrelated_section()]
         result = self._run_nl_search(sections, "generators yield delegation")
         assert "No relevant sections found" in result
 
     def test_threshold_filters_weak_from_mixed_set(self):
-        """Only the strong match should appear when mixed with a weak one."""
         good = self._make_matching_section("generators")
         bad = self._make_unrelated_section()
         result = self._run_nl_search([good, bad], "generators yield delegation")

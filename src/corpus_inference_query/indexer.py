@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .corpus_config import CORPUS_SPECS, SUBSECTION_BLOCKLIST, CorpusSpec
+from .corpus_config import CORPUS_SPECS, SUBSECTION_BLOCKLIST, CorpusSpec, load_corpus_specs
 
 
 @dataclass
@@ -199,7 +199,9 @@ def build_index(corpus_path: Path) -> list[Section]:
     """Build the full section index from all corpus files."""
     all_sections: list[Section] = []
 
-    for spec in CORPUS_SPECS:
+    corpus_toml = corpus_path / "corpus.toml"
+    specs = load_corpus_specs(corpus_toml) if corpus_toml.exists() else CORPUS_SPECS
+    for spec in specs:
         if spec.is_directory:
             if spec.corpus_id == "design-patterns-python":
                 all_sections.extend(_index_design_patterns(spec, corpus_path))

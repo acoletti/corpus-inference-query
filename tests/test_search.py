@@ -303,6 +303,35 @@ def test_build_index_loads_strunk_fixture() -> None:
     assert any("Omit Needless Words" in s.section_name for s in strunk)
 
 
+def test_load_corpus_specs_reads_fixture() -> None:
+    """load_corpus_specs parses corpus.toml and returns CorpusSpec list."""
+    from pathlib import Path
+    from corpus_inference_query.corpus_config import load_corpus_specs
+
+    fixture_toml = Path(__file__).parent / "fixtures" / "corpus" / "corpus.toml"
+    specs = load_corpus_specs(fixture_toml)
+
+    assert len(specs) == 2
+    shorthands = {s.shorthand for s in specs}
+    assert shorthands == {"HTWS", "Strunk"}
+
+    htws = next(s for s in specs if s.shorthand == "HTWS")
+    assert htws.title == "How to Write a Sentence"
+    assert htws.author == "Stanley Fish"
+    assert htws.year == 2011
+    assert htws.style_tags == ["subordinating", "additive"]
+    assert htws.type_tags == ["essay", "book"]
+
+
+def test_load_corpus_specs_returns_empty_for_missing_file() -> None:
+    """load_corpus_specs returns [] when file does not exist."""
+    from pathlib import Path
+    from corpus_inference_query.corpus_config import load_corpus_specs
+
+    result = load_corpus_specs(Path("/nonexistent/corpus.toml"))
+    assert result == []
+
+
 @pytest.mark.skipif(not _VECTOR_DEPS, reason="lancedb and fastembed required for vector tests")
 def test_build_vector_store_cache_hit_skips_rebuild(vector_env) -> None:
     """Second call with same sections must reuse the cached table."""
