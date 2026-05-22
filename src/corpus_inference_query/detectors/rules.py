@@ -305,7 +305,7 @@ def detect_opening_craft(text: str, types: list[str] | None = None) -> list[Viol
         return []
     first = sentences[0]
     first_word = first.split()[0].lower() if first.split() else ""
-    if first_word in ("i", "my"):
+    if first_word in ("i", "my") or first_word in {"which", "who", "that", "whom", "whose"}:
         return [Violation(
             rule_id="§9",
             rule_title="Opening Craft",

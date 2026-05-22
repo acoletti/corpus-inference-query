@@ -218,6 +218,12 @@ class TestOpeningCraft:
         result = detect_opening_craft(text)
         assert result == []
 
+    def test_relative_opener_flagged(self) -> None:
+        text = "Which approach we choose matters greatly."
+        result = detect_opening_craft(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§9"
+
 
 class TestClosingCraft:
     def test_etc_closer_flagged(self) -> None:
