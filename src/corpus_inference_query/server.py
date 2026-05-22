@@ -1,4 +1,4 @@
-"""MCP stdio server for code inference corpus queries."""
+"""MCP stdio server for writing corpus queries."""
 
 from __future__ import annotations
 
@@ -92,19 +92,16 @@ def query(
     max_tokens: int = 1500,
     top_k: int = 3,
 ) -> str:
-    """Query the code inference corpus by shorthand citation or natural language.
+    """Query the writing corpus by shorthand citation or natural language.
 
     Examples:
-      - "CC-Py §Functions.2" → Clean Code Python, Functions section, 2nd tip
-      - "Google §2.7" → Google Style Guide section 2.7 (Comprehensions)
-      - "FP2e §Generators" → Fluent Python 2e, generators chapter
-      - "DP-Py §Strategy" → Design Patterns, Strategy pattern
-      - "CC §Smells" → Clean Code, code smells chapter
-      - "generator delegation yield from" → natural language search across all corpora
+      - "HTWS §Subordinating" → Fish, How to Write a Sentence, Subordinating chapter
+      - "Strunk §Omit Needless Words" → Strunk and White, omit needless words
+      - "subordinating sentence dependent clause" → natural language search across all corpora
 
     Args:
-        query: The query string — a shorthand citation (e.g. "CC-Py §Functions.2")
-               or natural language (e.g. "decorator pattern python").
+        query: The query string — a shorthand citation (e.g. "HTWS §Subordinating")
+               or natural language (e.g. "additive style parataxis").
         max_tokens: Target response size in tokens (approximate). Default 1500, max 4000.
         top_k: Number of sections to return for natural language queries. Default 3, max 20.
 
