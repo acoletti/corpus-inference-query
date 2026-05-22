@@ -348,6 +348,22 @@ class TestTransitions:
     def test_single_paragraph_no_violation(self) -> None:
         assert detect_transitions("Just one paragraph.") == []
 
+    def test_stem_overlap_suppresses_flag(self) -> None:
+        # "dog" in both paragraphs — stem overlap should suppress the §14 violation
+        text = "The dog barked all morning.\n\nThe dogs were restless and noisy."
+        result = detect_transitions(text)
+        assert result == []
+
+    def test_three_paragraphs_multiple_gaps_checked(self) -> None:
+        # Both gaps are abrupt — should get 2 violations
+        text = (
+            "Dogs are loyal animals.\n\n"
+            "Quantum physics describes subatomic particles.\n\n"
+            "The French Revolution began in 1789."
+        )
+        result = detect_transitions(text)
+        assert result is not None and len(result) >= 2
+
 
 class TestLedeAndTitle:
     def test_long_first_sentence_flagged(self) -> None:

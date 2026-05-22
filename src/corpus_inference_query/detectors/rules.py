@@ -99,7 +99,7 @@ _CASUAL_MARKERS = frozenset(['kinda', 'gonna', 'wanna', 'gotta', 'awesome', 'tot
 # Constants for §9–§12 detectors
 _LAZY_CLOSERS = frozenset(["etc", "and so on", "and so forth", "among others"])
 
-# Constants for §14–§15 detectors
+# Constants for §14 detector
 _TRANSITION_WORDS = frozenset({
     "however", "therefore", "thus", "moreover", "furthermore", "nevertheless",
     "consequently", "meanwhile", "additionally", "finally", "first", "second",
@@ -402,7 +402,8 @@ def detect_transitions(text: str, types: list[str] | None = None) -> list[Violat
         return []
     violations = []
     for i in range(len(paragraphs) - 1):
-        last_sent = _split_sentences(paragraphs[i])[-1] if _split_sentences(paragraphs[i]) else ""
+        curr_sents = _split_sentences(paragraphs[i])
+        last_sent = curr_sents[-1] if curr_sents else ""
         next_sents = _split_sentences(paragraphs[i + 1])
         first_sent = next_sents[0] if next_sents else ""
         if not last_sent or not first_sent:
@@ -424,6 +425,7 @@ def detect_transitions(text: str, types: list[str] | None = None) -> list[Violat
 
 
 def detect_lede_and_title(text: str, types: list[str] | None = None) -> list[Violation] | None:
+    # types=None applies rule (no type context → treat as generic prose)
     if types is not None and not any(t in _LEDE_TYPES for t in types):
         return []
     sentences = _split_sentences(text)
