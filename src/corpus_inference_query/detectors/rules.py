@@ -30,6 +30,16 @@ def _content_words(text: str) -> list[str]:
     ]
 
 
+def _word_stem(word: str) -> str:
+    """Simple stemming by removing common suffixes for cohesion matching."""
+    w = word.lower()
+    # Remove common suffixes (longest first to avoid incorrect matches)
+    for suffix in ['tion', 'ing', 'ness', 'ure', 'ed', 'ly', 'es', 's']:
+        if w.endswith(suffix) and len(w) > len(suffix) + 2:
+            return w[:-len(suffix)]
+    return w
+
+
 def _count_syllables(word: str) -> int:
     word = word.lower().strip('.,!?;:()"\' ')
     if not word:
@@ -60,23 +70,113 @@ def _flesch_reading_ease(text: str) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Module-level constants for §1–§4 detectors
+# ---------------------------------------------------------------------------
+
+_RELATIVE_CLAUSE_RE = re.compile(r'\b(which|who|that|whom|whose)\b', re.I)
+
+_WORDY_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r'\bin the event that\b', re.I), 'if'),
+    (re.compile(r'\bdue to the fact that\b', re.I), 'because'),
+    (re.compile(r'\bat this point in time\b', re.I), 'now'),
+    (re.compile(r'\bin order to\b', re.I), 'to'),
+    (re.compile(r'\bvery unique\b', re.I), 'unique'),
+    (re.compile(r'\bcompletely finished\b', re.I), 'finished'),
+    (re.compile(r'\bfinal outcome\b', re.I), 'outcome'),
+    (re.compile(r'\bfuture plans\b', re.I), 'plans'),
+    (re.compile(r'\bpast history\b', re.I), 'history'),
+    (re.compile(r'\brefer back\b', re.I), 'refer'),
+    (re.compile(r'\bend result\b', re.I), 'result'),
+    (re.compile(r'\bbasic fundamentals\b', re.I), 'fundamentals'),
+]
+
+_PASSIVE_RE = re.compile(r'\b(was|were|is|are|am|been|be)\s+\w+(?:ed|en)\b', re.I)
+_ABSTRACT_NOUN_RE = re.compile(r'\b\w+(?:tion|ness|ment|ity|ism|ance|ence)\b', re.I)
+
+
+# ---------------------------------------------------------------------------
 # Universal rules §1–§15 (stubs — filled in Tasks 3–6)
 # ---------------------------------------------------------------------------
 
 def detect_clarity(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    violations = []
+    for sent in _split_sentences(text):
+        words = sent.split()
+        relative_clauses = len(_RELATIVE_CLAUSE_RE.findall(sent))
+        if len(words) > 40 or relative_clauses > 2:
+            violations.append(Violation(
+                rule_id="§1",
+                rule_title="Clarity",
+                severity="warning",
+                snippet=sent[:120],
+            ))
+    return violations
 
 
 def detect_cohesion(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    sentences = _split_sentences(text)
+    if len(sentences) < 2:
+        return []
+    violations = []
+    for i in range(1, len(sentences)):
+        prev_words = _content_words(sentences[i - 1])
+        curr_words = _content_words(sentences[i])
+        prev_stems = {_word_stem(w) for w in prev_words}
+        curr_stems = {_word_stem(w) for w in curr_words}
+        if prev_stems and curr_stems and not (prev_stems & curr_stems):
+            violations.append(Violation(
+                rule_id="§2",
+                rule_title="Cohesion",
+                severity="info",
+                snippet=sentences[i][:120],
+            ))
+    return violations
 
 
 def detect_concision(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    violations = []
+    for pattern, suggestion in _WORDY_PATTERNS:
+        for m in pattern.finditer(text):
+            violations.append(Violation(
+                rule_id="§3",
+                rule_title="Concision",
+                severity="warning",
+                snippet=f'"{m.group()}" → "{suggestion}"',
+                span=(m.start(), m.end()),
+            ))
+    return violations
 
 
 def detect_voice_agency(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+    if not paragraphs:
+        paragraphs = [text]
+    violations = []
+    for para in paragraphs:
+        sentences = _split_sentences(para)
+        # Check passive voice if we have multiple sentences
+        if len(sentences) >= 2:
+            passive_count = sum(1 for s in sentences if _PASSIVE_RE.search(s))
+            if passive_count / len(sentences) > 0.25:
+                violations.append(Violation(
+                    rule_id="§4",
+                    rule_title="Voice and Agency",
+                    severity="warning",
+                    snippet=para[:120],
+                ))
+                continue
+        # Check nominalization density (works for any text)
+        content = _content_words(para)
+        if content:
+            nom_count = len(_ABSTRACT_NOUN_RE.findall(para))
+            if nom_count / len(content) > 0.20:
+                violations.append(Violation(
+                    rule_id="§4",
+                    rule_title="Voice and Agency",
+                    severity="warning",
+                    snippet=para[:120],
+                ))
+    return violations
 
 
 def detect_diction_register(text: str, types: list[str] | None = None) -> list[Violation] | None:
