@@ -98,6 +98,15 @@ _CASUAL_MARKERS = frozenset(['kinda', 'gonna', 'wanna', 'gotta', 'awesome', 'tot
 
 # Constants for §9–§12 detectors
 _LAZY_CLOSERS = frozenset(["etc", "and so on", "and so forth", "among others"])
+
+# Constants for §14–§15 detectors
+_TRANSITION_WORDS = frozenset({
+    "however", "therefore", "thus", "moreover", "furthermore", "nevertheless",
+    "consequently", "meanwhile", "additionally", "finally", "first", "second",
+    "third", "next", "then", "also", "but", "yet", "so", "still", "instead",
+    "otherwise", "indeed", "notably", "similarly", "conversely",
+})
+_LEDE_TYPES = frozenset(["article", "essay", "op-ed", "blog-post", "newsletter"])
 _FORMAL_TYPES = frozenset(['technical-doc', 'rfc', 'white-paper', 'memo', 'letter', 'cover-letter'])
 
 _FK_RANGES: dict[str, tuple[float, float]] = {
@@ -383,15 +392,60 @@ def detect_style_consciousness(text: str, types: list[str] | None = None) -> lis
 
 
 def detect_voice_fidelity(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return None  # always skip in M3 — requires personal corpus vector search
+    # Permanent skip: requires personal corpus vector search not available at detection time.
+    return None
 
 
 def detect_transitions(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+    if len(paragraphs) < 2:
+        return []
+    violations = []
+    for i in range(len(paragraphs) - 1):
+        last_sent = _split_sentences(paragraphs[i])[-1] if _split_sentences(paragraphs[i]) else ""
+        next_sents = _split_sentences(paragraphs[i + 1])
+        first_sent = next_sents[0] if next_sents else ""
+        if not last_sent or not first_sent:
+            continue
+        prev_stems = {_word_stem(w) for w in _content_words(last_sent)}
+        curr_stems = {_word_stem(w) for w in _content_words(first_sent)}
+        if prev_stems & curr_stems:
+            continue
+        opening_word = first_sent.split()[0].lower().strip('.,!?;:()"\'') if first_sent.split() else ""
+        if opening_word in _TRANSITION_WORDS:
+            continue
+        violations.append(Violation(
+            rule_id="§14",
+            rule_title="Transitions",
+            severity="info",
+            snippet=first_sent[:120],
+        ))
+    return violations
 
 
 def detect_lede_and_title(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is not None and not any(t in _LEDE_TYPES for t in types):
+        return []
+    sentences = _split_sentences(text)
+    if not sentences:
+        return []
+    first = sentences[0]
+    violations = []
+    if len(first.split()) > 35:
+        violations.append(Violation(
+            rule_id="§15",
+            rule_title="Lede and Title",
+            severity="warning",
+            snippet=first[:120],
+        ))
+    if first.rstrip().endswith("?"):
+        violations.append(Violation(
+            rule_id="§15",
+            rule_title="Lede and Title",
+            severity="warning",
+            snippet=first[:120],
+        ))
+    return violations
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,9 @@ from corpus_inference_query.detectors.rules import (
     detect_closing_craft,
     detect_concrete_abstract,
     detect_style_consciousness,
+    detect_voice_fidelity,
+    detect_transitions,
+    detect_lede_and_title,
 )
 
 
@@ -317,3 +320,58 @@ class TestStyleConsciousness:
         result = detect_style_consciousness(text)
         assert result is not None and len(result) >= 2
         assert result[0].rule_id == "§12"
+
+
+class TestVoiceFidelity:
+    def test_always_returns_none(self) -> None:
+        assert detect_voice_fidelity("Any text.") is None
+
+    def test_always_skipped_regardless_of_types(self) -> None:
+        assert detect_voice_fidelity("Text.", types=["essay"]) is None
+
+    def test_empty_text_still_none(self) -> None:
+        assert detect_voice_fidelity("") is None
+
+
+class TestTransitions:
+    def test_abrupt_shift_flagged(self) -> None:
+        text = "Dogs are loyal animals.\n\nQuantum physics describes subatomic particles."
+        result = detect_transitions(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§14"
+
+    def test_transition_word_suppresses_flag(self) -> None:
+        text = "Dogs are loyal animals.\n\nHowever, cats are more independent."
+        result = detect_transitions(text)
+        assert result == []
+
+    def test_single_paragraph_no_violation(self) -> None:
+        assert detect_transitions("Just one paragraph.") == []
+
+
+class TestLedeAndTitle:
+    def test_long_first_sentence_flagged(self) -> None:
+        # Deliberately over the 35-word threshold
+        long = (
+            "The complex interplay of market forces, regulatory changes, "
+            "and shifting consumer preferences in the modern global economy "
+            "requires a nuanced understanding of macroeconomic trends, "
+            "geopolitical forces, institutional dynamics, and the evolving "
+            "policy frameworks that collectively determine outcomes."
+        )
+        assert len(long.split()) > 35, "test fixture must exceed 35 words"
+        result = detect_lede_and_title(long, types=["article"])
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§15"
+
+    def test_question_opener_flagged(self) -> None:
+        result = detect_lede_and_title("Have you ever wondered why cats purr?", types=["essay"])
+        assert result is not None and len(result) >= 1
+
+    def test_clean_lede_no_violation(self) -> None:
+        result = detect_lede_and_title("Silence speaks volumes.", types=["article"])
+        assert result == []
+
+    def test_non_applicable_type_skipped(self) -> None:
+        result = detect_lede_and_title("Have you ever wondered why?", types=["technical-doc"])
+        assert result == []
