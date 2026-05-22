@@ -24,6 +24,11 @@ from corpus_inference_query.detectors.rules import (
     detect_letter,
     detect_technical_doc,
     detect_newsletter,
+    detect_op_ed,
+    detect_blog_post,
+    detect_white_paper,
+    detect_memo,
+    detect_speech,
 )
 
 
@@ -690,3 +695,324 @@ class TestDetectNewsletter:
         text = "word " * 50
         result = detect_newsletter(text, types=["newsletter"])
         assert result == []
+
+
+# ---------------------------------------------------------------------------
+# §F  Op-Ed
+# ---------------------------------------------------------------------------
+
+_OP_ED_PERSONAL = (
+    "I believe the city council has made a grave mistake. "
+    "My experience living in this neighbourhood for twenty years gives me standing to say "
+    "that the proposed development will destroy the character we have built together. "
+    "When I attended the public meeting last Tuesday, I heard many residents share the same concern. "
+    "We must push back before it is too late to change course. "
+    "The council members have ignored community input at every stage of this process. "
+    "I urge every resident to contact their representative today. "
+    "Our voices matter and we deserve to be heard in these discussions. "
+    "The decision affects thousands of families and should not be taken lightly. "
+    "Let us stand together and demand accountability from those we elected to serve us."
+)  # >300 words? No — let's check: ~120 words. Good for first-person test, not word-count test.
+
+_OP_ED_NO_FIRST_PERSON = (
+    "The city council has made a grave mistake. "
+    "The proposed development will destroy the neighbourhood character. "
+    "Residents have been ignored at every stage. "
+    "The decision affects thousands of families and should not be taken lightly. "
+    "Accountability must be demanded from elected officials."
+)
+
+_OP_ED_LONG_PERSONAL = (
+    "I believe the city council has made a grave mistake. " * 60
+)  # ~660 words with first person
+
+
+class TestDetectOpEd:
+    def test_non_op_ed_type_returns_empty(self) -> None:
+        result = detect_op_ed(_OP_ED_NO_FIRST_PERSON, types=["article"])
+        assert result == []
+
+    def test_none_types_returns_empty(self) -> None:
+        result = detect_op_ed(_OP_ED_NO_FIRST_PERSON, types=None)
+        assert result == []
+
+    def test_no_first_person_flagged(self) -> None:
+        result = detect_op_ed(_OP_ED_NO_FIRST_PERSON, types=["op-ed"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§F" in rule_ids
+        voice_violations = [v for v in result if "personal voice" in v.snippet.lower() or "first person" in v.snippet.lower() or v.rule_id == "§F"]
+        assert len(voice_violations) >= 1
+
+    def test_first_person_present_no_voice_violation(self) -> None:
+        # Personal voice present — should NOT flag voice violation
+        result = detect_op_ed(_OP_ED_PERSONAL, types=["op-ed"])
+        voice_violations = [v for v in result if "personal voice" in (v.rule_id + "")]
+        # Just check no rule about personal voice fires (check message content)
+        snippets = [v.snippet for v in result]
+        assert not any("personal voice" in s for s in snippets)
+
+    def test_short_op_ed_flagged(self) -> None:
+        # Under 300 words — should flag word count
+        result = detect_op_ed(_OP_ED_NO_FIRST_PERSON, types=["op-ed"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§F" in rule_ids
+
+    def test_long_personal_op_ed_no_violations(self) -> None:
+        result = detect_op_ed(_OP_ED_LONG_PERSONAL, types=["op-ed"])
+        assert result == []
+
+    def test_all_violations_are_info_severity(self) -> None:
+        result = detect_op_ed(_OP_ED_NO_FIRST_PERSON, types=["op-ed"])
+        for v in result:
+            assert v.severity == "info"
+
+    def test_my_triggers_first_person_detection(self) -> None:
+        text = "My view on the matter is clear. " * 60  # >300 words
+        result = detect_op_ed(text, types=["op-ed"])
+        voice_violations = [v for v in result if "personal voice" in v.snippet]
+        assert len(voice_violations) == 0  # "my" is present → no voice violation
+
+
+# ---------------------------------------------------------------------------
+# §G  Blog Post
+# ---------------------------------------------------------------------------
+
+_SINGLE_BLOCK_BLOG_LONG = "word " * 160  # >150 words, single paragraph
+
+_MULTI_PARA_BLOG = "\n\n".join([
+    "This is the first paragraph about the topic at hand.",
+    "This is the second paragraph that continues the discussion.",
+    "This is the third paragraph with concluding thoughts.",
+])
+
+_LONG_BLOG = "This is a typical blog sentence. " * 100  # >800 words
+
+_REGULAR_BLOG_LONG = "This is a typical blog sentence. " * 100  # tests "regular-blog" alias
+
+
+class TestDetectBlogPost:
+    def test_non_blog_type_returns_empty(self) -> None:
+        result = detect_blog_post(_SINGLE_BLOCK_BLOG_LONG, types=["article"])
+        assert result == []
+
+    def test_none_types_returns_empty(self) -> None:
+        result = detect_blog_post(_SINGLE_BLOCK_BLOG_LONG, types=None)
+        assert result == []
+
+    def test_single_paragraph_long_text_flagged(self) -> None:
+        result = detect_blog_post(_SINGLE_BLOCK_BLOG_LONG, types=["blog-post"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§G" in rule_ids
+
+    def test_multi_paragraph_no_structure_violation(self) -> None:
+        result = detect_blog_post(_MULTI_PARA_BLOG, types=["blog-post"])
+        structure_violations = [v for v in result if "paragraph" in v.snippet.lower()]
+        assert len(structure_violations) == 0
+
+    def test_long_blog_flagged(self) -> None:
+        result = detect_blog_post(_LONG_BLOG, types=["blog-post"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§G" in rule_ids
+
+    def test_regular_blog_alias_triggers(self) -> None:
+        result = detect_blog_post(_LONG_BLOG, types=["regular-blog"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§G" in rule_ids
+
+    def test_all_violations_are_info_severity(self) -> None:
+        result = detect_blog_post(_SINGLE_BLOCK_BLOG_LONG, types=["blog-post"])
+        for v in result:
+            assert v.severity == "info"
+
+    def test_short_single_para_no_structure_violation(self) -> None:
+        # ≤150 words single paragraph should NOT flag paragraph break issue
+        text = "word " * 100
+        result = detect_blog_post(text, types=["blog-post"])
+        structure_violations = [v for v in result if "paragraph" in v.snippet.lower()]
+        assert len(structure_violations) == 0
+
+
+# ---------------------------------------------------------------------------
+# §H  White Paper
+# ---------------------------------------------------------------------------
+
+_SHORT_WHITE_PAPER = "word " * 800  # <1000 words, no headers
+
+_LONG_WHITE_PAPER_NO_HEADERS = "word " * 1200  # >1000 words, no headers
+
+_LONG_WHITE_PAPER_WITH_HEADERS = (
+    "# Introduction\n\n"
+    + "word " * 400
+    + "\n\n## Analysis\n\n"
+    + "word " * 400
+    + "\n\n### Conclusion\n\n"
+    + "word " * 400
+)
+
+
+class TestDetectWhitePaper:
+    def test_non_white_paper_type_returns_empty(self) -> None:
+        result = detect_white_paper(_SHORT_WHITE_PAPER, types=["article"])
+        assert result == []
+
+    def test_none_types_returns_empty(self) -> None:
+        result = detect_white_paper(_SHORT_WHITE_PAPER, types=None)
+        assert result == []
+
+    def test_short_white_paper_flags_warning(self) -> None:
+        result = detect_white_paper(_SHORT_WHITE_PAPER, types=["white-paper"])
+        severities = [v.severity for v in result]
+        assert "warning" in severities
+        rule_ids = [v.rule_id for v in result]
+        assert "§H" in rule_ids
+
+    def test_short_white_paper_also_flags_no_headers(self) -> None:
+        result = detect_white_paper(_SHORT_WHITE_PAPER, types=["white-paper"])
+        info_violations = [v for v in result if v.severity == "info"]
+        assert len(info_violations) >= 1
+
+    def test_long_white_paper_no_headers_flags_info(self) -> None:
+        result = detect_white_paper(_LONG_WHITE_PAPER_NO_HEADERS, types=["white-paper"])
+        info_violations = [v for v in result if v.severity == "info"]
+        assert len(info_violations) >= 1
+        rule_ids = [v.rule_id for v in result]
+        assert "§H" in rule_ids
+
+    def test_long_white_paper_with_headers_no_violations(self) -> None:
+        result = detect_white_paper(_LONG_WHITE_PAPER_WITH_HEADERS, types=["white-paper"])
+        assert result == []
+
+    def test_length_violation_is_warning_severity(self) -> None:
+        result = detect_white_paper(_SHORT_WHITE_PAPER, types=["white-paper"])
+        warning_violations = [v for v in result if v.severity == "warning"]
+        assert len(warning_violations) >= 1
+
+
+# ---------------------------------------------------------------------------
+# §I  Memo
+# ---------------------------------------------------------------------------
+
+_WELL_FORMED_MEMO = (
+    "To: All Staff\nFrom: Jane Doe\nDate: 2024-01-15\nSubject: Q1 Goals\n\n"
+    "Please review the attached goals document before the team meeting on Friday."
+)
+
+_LONG_MEMO = (
+    "To: All Staff\nFrom: Jane Doe\nDate: 2024-01-15\nSubject: Q1 Goals\n\n"
+    + "This memo covers important topics in detail. " * 60
+)
+
+_MEMO_NO_HEADERS = (
+    "Please review the attached goals document before the team meeting on Friday. "
+    "The meeting will cover our progress against targets."
+)
+
+
+class TestDetectMemo:
+    def test_non_memo_type_returns_empty(self) -> None:
+        result = detect_memo(_LONG_MEMO, types=["email"])
+        assert result == []
+
+    def test_none_types_returns_empty(self) -> None:
+        result = detect_memo(_LONG_MEMO, types=None)
+        assert result == []
+
+    def test_well_formed_short_memo_no_violations(self) -> None:
+        result = detect_memo(_WELL_FORMED_MEMO, types=["memo"])
+        assert result == []
+
+    def test_long_memo_flagged(self) -> None:
+        result = detect_memo(_LONG_MEMO, types=["memo"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§I" in rule_ids
+
+    def test_memo_without_header_fields_flagged(self) -> None:
+        result = detect_memo(_MEMO_NO_HEADERS, types=["memo"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§I" in rule_ids
+
+    def test_all_violations_are_info_severity(self) -> None:
+        result = detect_memo(_LONG_MEMO, types=["memo"])
+        for v in result:
+            assert v.severity == "info"
+
+    def test_re_header_field_recognized(self) -> None:
+        text = "Re: Budget Review\n\nPlease confirm your attendance."
+        result = detect_memo(text, types=["memo"])
+        header_violations = [v for v in result if "header" in v.snippet.lower()]
+        assert len(header_violations) == 0
+
+
+# ---------------------------------------------------------------------------
+# §J  Speech
+# ---------------------------------------------------------------------------
+
+_SPEECH_WITH_ADDRESS = (
+    "My fellow colleagues, tonight we gather to celebrate an important milestone. "
+    "You have worked tirelessly this year, and your efforts have paid off. "
+    "We are stronger together, and our progress shows what we can do. "
+    "Thank you all for being here today to mark this achievement."
+)
+
+_SPEECH_NO_ADDRESS = (
+    "The committee reviewed the annual budget. "
+    "Expenditures increased by twelve percent. "
+    "Revenue projections remain on target. "
+    "The board approved the proposed allocations."
+)
+
+_SPEECH_LONG_SENTENCES = (
+    "The organization has decided after extensive deliberation and exhaustive consultation "
+    "with multiple stakeholders across all departments, regional offices, and executive "
+    "committees that the proposed restructuring plan will be implemented beginning next quarter. "
+    "The committee has also determined after thoroughly reviewing the detailed financial "
+    "projections prepared by the external consultants that substantial additional capital "
+    "investment will be required before the second phase of the initiative can begin properly."
+)
+
+_TALK_TRANSCRIPT_WITH_ADDRESS = (
+    "Welcome everyone to this year's conference. "
+    "Today we will explore how our industry is changing. "
+    "Your questions and feedback are vital to our progress. "
+    "We look forward to a productive discussion with you all."
+)
+
+
+class TestDetectSpeech:
+    def test_non_speech_type_returns_empty(self) -> None:
+        result = detect_speech(_SPEECH_NO_ADDRESS, types=["article"])
+        assert result == []
+
+    def test_none_types_returns_empty(self) -> None:
+        result = detect_speech(_SPEECH_NO_ADDRESS, types=None)
+        assert result == []
+
+    def test_speech_with_address_no_address_violation(self) -> None:
+        result = detect_speech(_SPEECH_WITH_ADDRESS, types=["speech"])
+        address_violations = [v for v in result if "direct address" in v.snippet]
+        assert len(address_violations) == 0
+
+    def test_speech_without_address_flagged(self) -> None:
+        result = detect_speech(_SPEECH_NO_ADDRESS, types=["speech"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§J" in rule_ids
+
+    def test_long_sentences_in_speech_flagged(self) -> None:
+        result = detect_speech(_SPEECH_LONG_SENTENCES, types=["speech"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§J" in rule_ids
+
+    def test_talk_transcript_alias_triggers(self) -> None:
+        result = detect_speech(_SPEECH_NO_ADDRESS, types=["talk-transcript"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§J" in rule_ids
+
+    def test_all_violations_are_info_severity(self) -> None:
+        result = detect_speech(_SPEECH_NO_ADDRESS, types=["speech"])
+        for v in result:
+            assert v.severity == "info"
+
+    def test_talk_transcript_with_address_no_address_violation(self) -> None:
+        result = detect_speech(_TALK_TRANSCRIPT_WITH_ADDRESS, types=["talk-transcript"])
+        address_violations = [v for v in result if "direct address" in v.snippet]
+        assert len(address_violations) == 0

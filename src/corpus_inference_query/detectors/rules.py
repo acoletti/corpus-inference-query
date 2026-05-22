@@ -454,6 +454,7 @@ def detect_lede_and_title(text: str, types: list[str] | None = None) -> list[Vio
 # Module-level constants for §A–§E type addenda
 # ---------------------------------------------------------------------------
 
+
 _ARTICLE_TYPES = frozenset(["article", "longform-journalism"])
 _EMAIL_TYPES = frozenset(["email"])
 _LETTER_TYPES = frozenset(["letter", "cover-letter"])
@@ -592,21 +593,130 @@ def detect_newsletter(text: str, types: list[str] | None = None) -> list[Violati
     return violations
 
 
+# ---------------------------------------------------------------------------
+# Module-level constants for §F–§J type addenda
+# ---------------------------------------------------------------------------
+
+_OP_ED_TYPES = frozenset(["op-ed"])
+_BLOG_TYPES = frozenset(["blog-post", "regular-blog"])
+_WHITE_PAPER_TYPES = frozenset(["white-paper"])
+_MEMO_TYPES = frozenset(["memo"])
+_SPEECH_TYPES = frozenset(["speech", "talk-transcript"])
+
+_OP_ED_FIRST_PERSON = re.compile(r"\bI\b|I'm|I've|I'd|I'll|\bmy\b|\bme\b|\bmyself\b", re.I)
+_MEMO_HEADERS = frozenset(["to:", "from:", "date:", "subject:", "re:"])
+_SPEECH_ADDRESS = re.compile(
+    r"\b(you|your|we|our|tonight|today|friends|colleagues|everyone)\b", re.I
+)
+_WHITE_PAPER_HEADERS = re.compile(r'^#{1,3} ', re.M)
+
+
 def detect_op_ed(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is None or not any(t in _OP_ED_TYPES for t in types):
+        return []
+    violations: list[Violation] = []
+    if not _OP_ED_FIRST_PERSON.search(text):
+        violations.append(Violation(
+            rule_id="§F",
+            rule_title="Op-Ed",
+            severity="info",
+            snippet=text[:80],
+        ))
+    if len(text.split()) < 300:
+        violations.append(Violation(
+            rule_id="§F",
+            rule_title="Op-Ed",
+            severity="info",
+            snippet=text[:80],
+        ))
+    return violations
 
 
 def detect_blog_post(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is None or not any(t in _BLOG_TYPES for t in types):
+        return []
+    violations: list[Violation] = []
+    paragraphs = [p for p in text.split('\n\n') if p.strip()]
+    word_count = len(text.split())
+    if len(paragraphs) < 2 and word_count > 150:
+        violations.append(Violation(
+            rule_id="§G",
+            rule_title="Blog Post",
+            severity="info",
+            snippet=text[:80],
+        ))
+    if word_count > 800:
+        violations.append(Violation(
+            rule_id="§G",
+            rule_title="Blog Post",
+            severity="info",
+            snippet=text[:80],
+        ))
+    return violations
 
 
 def detect_white_paper(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is None or not any(t in _WHITE_PAPER_TYPES for t in types):
+        return []
+    violations: list[Violation] = []
+    if len(text.split()) < 1000:
+        violations.append(Violation(
+            rule_id="§H",
+            rule_title="White Paper",
+            severity="warning",
+            snippet=text[:80],
+        ))
+    if not _WHITE_PAPER_HEADERS.search(text):
+        violations.append(Violation(
+            rule_id="§H",
+            rule_title="White Paper",
+            severity="info",
+            snippet=text[:80],
+        ))
+    return violations
 
 
 def detect_memo(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is None or not any(t in _MEMO_TYPES for t in types):
+        return []
+    violations: list[Violation] = []
+    if len(text.split()) > 300:
+        violations.append(Violation(
+            rule_id="§I",
+            rule_title="Memo",
+            severity="info",
+            snippet=text[:80],
+        ))
+    text_lower = text.lower()
+    if not any(h in text_lower for h in _MEMO_HEADERS):
+        violations.append(Violation(
+            rule_id="§I",
+            rule_title="Memo",
+            severity="info",
+            snippet=text[:80],
+        ))
+    return violations
 
 
 def detect_speech(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is None or not any(t in _SPEECH_TYPES for t in types):
+        return []
+    violations: list[Violation] = []
+    if not _SPEECH_ADDRESS.search(text):
+        violations.append(Violation(
+            rule_id="§J",
+            rule_title="Speech",
+            severity="info",
+            snippet=text[:80],
+        ))
+    sentences = _split_sentences(text)
+    if sentences:
+        avg_len = sum(len(s.split()) for s in sentences) / len(sentences)
+        if avg_len > 30:
+            violations.append(Violation(
+                rule_id="§J",
+                rule_title="Speech",
+                severity="info",
+                snippet=text[:80],
+            ))
+    return violations
