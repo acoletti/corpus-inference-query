@@ -17,7 +17,7 @@ from .indexer import Section
 # (raw Python source files rather than prose documentation).
 _EXCLUDE_CORPUS_IDS = frozenset({"example-code-2e", "design-patterns-python"})
 
-_DEFAULT_CACHE = Path.home() / ".cache" / "code-inference-query" / "lance"
+_DEFAULT_CACHE = Path.home() / ".cache" / "corpus-inference-query" / "lance"
 _DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 
 # Module-level singleton — loaded once per process, reused for every query.
@@ -25,11 +25,11 @@ _embed_model = None
 
 
 def _cache_path() -> Path:
-    return Path(os.environ.get("CODE_INFERENCE_CACHE_PATH", str(_DEFAULT_CACHE)))
+    return Path(os.environ.get("CORPUS_INFERENCE_CACHE_PATH", str(_DEFAULT_CACHE)))
 
 
 def _embed_model_name() -> str:
-    return os.environ.get("CODE_INFERENCE_EMBED_MODEL", _DEFAULT_MODEL)
+    return os.environ.get("CORPUS_INFERENCE_EMBED_MODEL", _DEFAULT_MODEL)
 
 
 def _corpus_fingerprint(sections: list[Section], model_name: str) -> str:

@@ -16,16 +16,14 @@ from .vector_store import build_vector_store, vector_search
 logger = logging.getLogger(__name__)
 
 # Resolve corpus path from env or default
-_DEFAULT_CORPUS_PATH = os.path.expanduser(
-    "~/Library/Mobile Documents/com~apple~CloudDocs/code-inference"
-)
+_DEFAULT_CORPUS_PATH = os.path.expanduser("~/Documents/writing-corpus")
 CORPUS_PATH = Path(
     os.path.expanduser(
-        os.environ.get("CODE_INFERENCE_CORPUS_PATH", _DEFAULT_CORPUS_PATH)
+        os.environ.get("CORPUS_INFERENCE_PATH", _DEFAULT_CORPUS_PATH)
     )
 )
 
-mcp = FastMCP("code-inference-query")
+mcp = FastMCP("corpus-inference-query")
 
 # Token / character budget constants.
 # _CHARS_PER_TOKEN: rough token-to-char ratio used throughout; matches search.py:118.
@@ -66,7 +64,7 @@ def _get_index() -> list[Section]:
         if not CORPUS_PATH.exists():
             raise RuntimeError(
                 f"Corpus path does not exist: {CORPUS_PATH}\n"
-                f"Set CODE_INFERENCE_CORPUS_PATH to the correct location."
+                f"Set CORPUS_INFERENCE_PATH to the correct location."
             )
         _index = build_index(CORPUS_PATH)
     return _index

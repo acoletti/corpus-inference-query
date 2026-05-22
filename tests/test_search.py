@@ -4,14 +4,14 @@ import tempfile
 
 import pytest
 
-from code_inference_query.indexer import Section
-from code_inference_query.search import _parse_citation, _score_section, search
+from corpus_inference_query.indexer import Section
+from corpus_inference_query.search import _parse_citation, _score_section, search
 
 _VECTOR_DEPS = importlib.util.find_spec("lancedb") and importlib.util.find_spec("fastembed")
 
 
 def test_corpus_spec_carries_style_and_type_tags() -> None:
-    from code_inference_query.corpus_config import CorpusSpec
+    from corpus_inference_query.corpus_config import CorpusSpec
     import re
 
     spec = CorpusSpec(
@@ -29,7 +29,7 @@ def test_corpus_spec_carries_style_and_type_tags() -> None:
 
 
 def test_corpus_spec_defaults_tags_to_empty_lists() -> None:
-    from code_inference_query.corpus_config import CorpusSpec
+    from corpus_inference_query.corpus_config import CorpusSpec
     import re
 
     spec = CorpusSpec(
@@ -43,7 +43,7 @@ def test_corpus_spec_defaults_tags_to_empty_lists() -> None:
 
 
 def test_section_carries_style_and_type_tags() -> None:
-    from code_inference_query.indexer import Section
+    from corpus_inference_query.indexer import Section
 
     sec = Section(
         corpus_id="htws",
@@ -62,7 +62,7 @@ def test_section_carries_style_and_type_tags() -> None:
 
 
 def test_section_defaults_tags_to_empty_lists() -> None:
-    from code_inference_query.indexer import Section
+    from corpus_inference_query.indexer import Section
 
     sec = Section(
         corpus_id="x",
@@ -202,7 +202,7 @@ def test_bare_shorthand_nl_query_routes_to_scoped_nl_search() -> None:
 def test_format_results_respects_max_chars_budget() -> None:
     # The old 1000-char floor caused output to massively exceed the budget.
     # With 3 sections and max_chars=30, each section must get ~10 chars, not 1000.
-    from code_inference_query.search import _format_results
+    from corpus_inference_query.search import _format_results
     sections = [
         Section(
             corpus_id="fluent-python",
@@ -224,11 +224,11 @@ def test_format_results_respects_max_chars_budget() -> None:
 @pytest.fixture()
 def vector_env(tmp_path):
     cache = str(tmp_path / "lance")
-    os.environ["CODE_INFERENCE_CACHE_PATH"] = cache
-    import code_inference_query.vector_store as vs
+    os.environ["CORPUS_INFERENCE_CACHE_PATH"] = cache
+    import corpus_inference_query.vector_store as vs
     vs._embed_model = None
     yield
-    del os.environ["CODE_INFERENCE_CACHE_PATH"]
+    del os.environ["CORPUS_INFERENCE_CACHE_PATH"]
     vs._embed_model = None
 
 
@@ -259,7 +259,7 @@ def _make_sections() -> list[Section]:
 
 @pytest.mark.skipif(not _VECTOR_DEPS, reason="lancedb and fastembed required for vector tests")
 def test_build_vector_store_returns_searchable_table(vector_env) -> None:
-    from code_inference_query.vector_store import build_vector_store
+    from corpus_inference_query.vector_store import build_vector_store
 
     table = build_vector_store(_make_sections())
     assert table is not None
@@ -267,7 +267,7 @@ def test_build_vector_store_returns_searchable_table(vector_env) -> None:
 
 @pytest.mark.skipif(not _VECTOR_DEPS, reason="lancedb and fastembed required for vector tests")
 def test_vector_search_returns_relevant_section(vector_env) -> None:
-    from code_inference_query.vector_store import build_vector_store, vector_search
+    from corpus_inference_query.vector_store import build_vector_store, vector_search
 
     sections = _make_sections()
     table = build_vector_store(sections)
@@ -279,11 +279,11 @@ def test_vector_search_returns_relevant_section(vector_env) -> None:
 @pytest.mark.skipif(not _VECTOR_DEPS, reason="lancedb and fastembed required for vector tests")
 def test_build_vector_store_cache_hit_skips_rebuild(vector_env) -> None:
     """Second call with same sections must reuse the cached table."""
-    from code_inference_query.vector_store import build_vector_store
+    from corpus_inference_query.vector_store import build_vector_store
 
     sections = _make_sections()
     table1 = build_vector_store(sections)
-    import code_inference_query.vector_store as vs
+    import corpus_inference_query.vector_store as vs
     vs._embed_model = None  # clear to allow sentinel check below
 
     table2 = build_vector_store(sections)

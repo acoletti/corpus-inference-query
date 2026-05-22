@@ -10,11 +10,11 @@ import pytest
 # when the real corpus directory is absent in CI / fresh checkouts.
 import os
 os.environ.setdefault(
-    "CODE_INFERENCE_CORPUS_PATH",
+    "CORPUS_INFERENCE_PATH",
     os.path.join(os.path.dirname(__file__), "fixtures", "corpus"),
 )
 
-from code_inference_query.server import (
+from corpus_inference_query.server import (
     _CHARS_PER_TOKEN,
     _MAX_TOKENS_CEILING,
     _TOP_K_CEILING,
@@ -29,7 +29,7 @@ from code_inference_query.server import (
 # ---------------------------------------------------------------------------
 
 def _make_section(citation="CC §1", content="some content"):
-    from code_inference_query.indexer import Section
+    from corpus_inference_query.indexer import Section
     return Section(
         corpus_id="test",
         shorthand="CC",
@@ -53,11 +53,11 @@ class TestMaxTokensClamp:
         """Return the max_chars value that reached search() for a citation query."""
         captured = {}
         with patch(
-            "code_inference_query.server._get_index",
+            "corpus_inference_query.server._get_index",
             return_value=[_make_section()],
         ):
             with patch(
-                "code_inference_query.server.search",
+                "corpus_inference_query.server.search",
                 side_effect=lambda *a, **kw: captured.update(kw) or "",
             ):
                 query("CC §1", max_tokens=max_tokens_input)
@@ -90,9 +90,9 @@ class TestCitationRouting:
     """Queries containing § must route to search() and never touch vector_search."""
 
     def test_citation_calls_search_not_vector(self):
-        with patch("code_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("code_inference_query.server.search", return_value="result") as mock_search:
-                with patch("code_inference_query.server.vector_search") as mock_vec:
+        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
+            with patch("corpus_inference_query.server.search", return_value="result") as mock_search:
+                with patch("corpus_inference_query.server.vector_search") as mock_vec:
                     result = query("CC §Functions")
         mock_search.assert_called_once()
         mock_vec.assert_not_called()
@@ -101,9 +101,9 @@ class TestCitationRouting:
     def test_citation_passes_max_chars_not_max_tokens(self):
         """search() must receive max_chars= (pre-computed), not max_tokens=."""
         captured = {}
-        with patch("code_inference_query.server._get_index", return_value=[_make_section()]):
+        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
             with patch(
-                "code_inference_query.server.search",
+                "corpus_inference_query.server.search",
                 side_effect=lambda *a, **kw: captured.update(kw) or "",
             ):
                 query("CC §1", max_tokens=500)
@@ -122,14 +122,14 @@ class TestNaturalLanguageRouting:
     def test_nl_uses_vector_when_available(self):
         mock_table = MagicMock()
         section = _make_section()
-        with patch("code_inference_query.server._get_index", return_value=[section]):
-            with patch("code_inference_query.server._get_vector_store", return_value=mock_table):
+        with patch("corpus_inference_query.server._get_index", return_value=[section]):
+            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
                 with patch(
-                    "code_inference_query.server.vector_search",
+                    "corpus_inference_query.server.vector_search",
                     return_value=[section],
                 ):
                     with patch(
-                        "code_inference_query.server._format_results",
+                        "corpus_inference_query.server._format_results",
                         return_value="vector result",
                     ) as mock_fmt:
                         result = query("generator delegation")
@@ -137,10 +137,10 @@ class TestNaturalLanguageRouting:
         assert result == "vector result"
 
     def test_nl_fallback_when_no_vector_store(self):
-        with patch("code_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("code_inference_query.server._get_vector_store", return_value=None):
+        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
+            with patch("corpus_inference_query.server._get_vector_store", return_value=None):
                 with patch(
-                    "code_inference_query.server.search", return_value="keyword result"
+                    "corpus_inference_query.server.search", return_value="keyword result"
                 ) as mock_search:
                     result = query("generator delegation")
         mock_search.assert_called_once()
@@ -148,11 +148,11 @@ class TestNaturalLanguageRouting:
 
     def test_nl_fallback_when_vector_returns_empty(self):
         mock_table = MagicMock()
-        with patch("code_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("code_inference_query.server._get_vector_store", return_value=mock_table):
-                with patch("code_inference_query.server.vector_search", return_value=[]):
+        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
+            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
+                with patch("corpus_inference_query.server.vector_search", return_value=[]):
                     with patch(
-                        "code_inference_query.server.search", return_value="keyword result"
+                        "corpus_inference_query.server.search", return_value="keyword result"
                     ) as mock_search:
                         result = query("generator delegation")
         mock_search.assert_called_once()
@@ -160,14 +160,14 @@ class TestNaturalLanguageRouting:
 
     def test_nl_fallback_on_vector_exception_calls_search(self):
         mock_table = MagicMock()
-        with patch("code_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("code_inference_query.server._get_vector_store", return_value=mock_table):
+        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
+            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
                 with patch(
-                    "code_inference_query.server.vector_search",
+                    "corpus_inference_query.server.vector_search",
                     side_effect=RuntimeError("lancedb exploded"),
                 ):
                     with patch(
-                        "code_inference_query.server.search", return_value="keyword result"
+                        "corpus_inference_query.server.search", return_value="keyword result"
                     ) as mock_search:
                         result = query("generator delegation")
         mock_search.assert_called_once()
@@ -175,14 +175,14 @@ class TestNaturalLanguageRouting:
 
     def test_nl_fallback_on_vector_exception_logs_error(self):
         mock_table = MagicMock()
-        with patch("code_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("code_inference_query.server._get_vector_store", return_value=mock_table):
+        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
+            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
                 with patch(
-                    "code_inference_query.server.vector_search",
+                    "corpus_inference_query.server.vector_search",
                     side_effect=RuntimeError("lancedb exploded"),
                 ):
-                    with patch("code_inference_query.server.search", return_value=""):
-                        with patch("code_inference_query.server.logger") as mock_logger:
+                    with patch("corpus_inference_query.server.search", return_value=""):
+                        with patch("corpus_inference_query.server.logger") as mock_logger:
                             query("generator delegation")
         mock_logger.error.assert_called_once()
         call_kwargs = mock_logger.error.call_args
@@ -193,11 +193,11 @@ class TestNaturalLanguageRouting:
         mock_table = MagicMock()
         section = _make_section()
         captured = {}
-        with patch("code_inference_query.server._get_index", return_value=[section]):
-            with patch("code_inference_query.server._get_vector_store", return_value=mock_table):
-                with patch("code_inference_query.server.vector_search", return_value=[section]):
+        with patch("corpus_inference_query.server._get_index", return_value=[section]):
+            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
+                with patch("corpus_inference_query.server.vector_search", return_value=[section]):
                     with patch(
-                        "code_inference_query.server._format_results",
+                        "corpus_inference_query.server._format_results",
                         side_effect=lambda secs, mc: captured.update({"max_chars": mc}) or "",
                     ):
                         query("factory pattern", max_tokens=800)
@@ -218,23 +218,23 @@ class TestSectionSignHeuristic:
     def test_nl_query_with_bare_section_sign_uses_vector_path(self):
         """'what does § mean?' has no shorthand — must not short-circuit to search()."""
         mock_table = MagicMock()
-        with patch("code_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("code_inference_query.server._get_vector_store", return_value=mock_table):
+        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
+            with patch("corpus_inference_query.server._get_vector_store", return_value=mock_table):
                 with patch(
-                    "code_inference_query.server.vector_search",
+                    "corpus_inference_query.server.vector_search",
                     return_value=[_make_section()],
                 ) as mock_vec:
                     with patch(
-                        "code_inference_query.server._format_results", return_value=""
+                        "corpus_inference_query.server._format_results", return_value=""
                     ):
                         query("what does § mean in python?")
         mock_vec.assert_called_once()
 
     def test_valid_citation_with_section_sign_skips_vector(self):
         """'CC §Functions' has a recognised shorthand — must skip vector search."""
-        with patch("code_inference_query.server._get_index", return_value=[_make_section()]):
-            with patch("code_inference_query.server.search", return_value="") as mock_search:
-                with patch("code_inference_query.server.vector_search") as mock_vec:
+        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
+            with patch("corpus_inference_query.server.search", return_value="") as mock_search:
+                with patch("corpus_inference_query.server.vector_search") as mock_vec:
                     query("CC §Functions")
         mock_search.assert_called_once()
         mock_vec.assert_not_called()
@@ -249,9 +249,9 @@ class TestTopKClamp:
 
     def _captured_top_k(self, top_k_input):
         captured = {}
-        with patch("code_inference_query.server._get_index", return_value=[_make_section()]):
+        with patch("corpus_inference_query.server._get_index", return_value=[_make_section()]):
             with patch(
-                "code_inference_query.server.search",
+                "corpus_inference_query.server.search",
                 side_effect=lambda *a, **kw: captured.update(kw) or "",
             ):
                 query("CC §1", top_k=top_k_input)
@@ -286,14 +286,14 @@ class TestReload:
         from pathlib import Path
         mock_path = MagicMock(spec=Path)
         mock_path.exists.return_value = True
-        return patch("code_inference_query.server.CORPUS_PATH", mock_path)
+        return patch("corpus_inference_query.server.CORPUS_PATH", mock_path)
 
     def test_reload_clears_index_and_rebuilds(self):
-        import code_inference_query.server as srv
+        import corpus_inference_query.server as srv
         sections = [_make_section()]
         with self._patch_corpus_exists():
             with patch(
-                "code_inference_query.server.build_index", return_value=sections
+                "corpus_inference_query.server.build_index", return_value=sections
             ) as mock_build:
                 result = reload()
         mock_build.assert_called_once()
@@ -301,9 +301,9 @@ class TestReload:
 
     def test_reload_resets_vector_store_sentinel(self):
         """After reload, _vector_store is None (not the unavailable sentinel)."""
-        import code_inference_query.server as srv
+        import corpus_inference_query.server as srv
         with self._patch_corpus_exists():
-            with patch("code_inference_query.server.build_index", return_value=[_make_section()]):
+            with patch("corpus_inference_query.server.build_index", return_value=[_make_section()]):
                 reload()
         # After reload _vector_store should be None (ready to rebuild on next NL
         # query), not a stale sentinel.
@@ -312,7 +312,7 @@ class TestReload:
     def test_reload_return_message_includes_section_count(self):
         sections = [_make_section(), _make_section(), _make_section()]
         with self._patch_corpus_exists():
-            with patch("code_inference_query.server.build_index", return_value=sections):
+            with patch("corpus_inference_query.server.build_index", return_value=sections):
                 result = reload()
         assert "3" in result
         assert "Reloaded" in result
@@ -326,7 +326,7 @@ class TestListCorpora:
     """list_corpora() must include example citations for each corpus."""
 
     def _run_list_corpora(self, sections):
-        with patch("code_inference_query.server._get_index", return_value=sections):
+        with patch("corpus_inference_query.server._get_index", return_value=sections):
             return list_corpora()
 
     def test_output_includes_example_citations(self):
@@ -366,14 +366,14 @@ class TestStartupWarmup:
     def test_warmup_called_before_mcp_run(self):
         call_order = []
         with patch(
-            "code_inference_query.server._get_vector_store",
+            "corpus_inference_query.server._get_vector_store",
             side_effect=lambda: call_order.append("warmup"),
         ):
             with patch(
-                "code_inference_query.server.mcp.run",
+                "corpus_inference_query.server.mcp.run",
                 side_effect=lambda **kw: call_order.append("run"),
             ):
-                from code_inference_query.server import main
+                from corpus_inference_query.server import main
                 main()
         assert call_order == ["warmup", "run"]
 
@@ -381,14 +381,14 @@ class TestStartupWarmup:
         """A corpus-missing error at warmup must be swallowed so mcp.run() still fires."""
         ran = []
         with patch(
-            "code_inference_query.server._get_vector_store",
+            "corpus_inference_query.server._get_vector_store",
             side_effect=RuntimeError("corpus missing"),
         ):
             with patch(
-                "code_inference_query.server.mcp.run",
+                "corpus_inference_query.server.mcp.run",
                 side_effect=lambda **kw: ran.append(True),
             ):
-                from code_inference_query.server import main
+                from corpus_inference_query.server import main
                 main()
         assert ran == [True]
 
@@ -401,12 +401,12 @@ class TestNLScoreThreshold:
     """_search_natural_language must filter out low-confidence matches."""
 
     def _run_nl_search(self, sections, query_str, top_k=5):
-        from code_inference_query.search import _NL_SCORE_THRESHOLD, _search_natural_language
+        from corpus_inference_query.search import _NL_SCORE_THRESHOLD, _search_natural_language
         return _search_natural_language(sections, query_str, max_chars=4000, top_k=top_k)
 
     def _make_matching_section(self, name="generators"):
         """Section whose name and keywords strongly match 'generators'."""
-        from code_inference_query.indexer import Section
+        from corpus_inference_query.indexer import Section
         return Section(
             corpus_id="test",
             shorthand="CC",
@@ -420,7 +420,7 @@ class TestNLScoreThreshold:
 
     def _make_unrelated_section(self):
         """Section with no overlap with 'generators yield delegation'."""
-        from code_inference_query.indexer import Section
+        from corpus_inference_query.indexer import Section
         return Section(
             corpus_id="test",
             shorthand="CC",
