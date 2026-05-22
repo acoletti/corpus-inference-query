@@ -176,9 +176,9 @@ def test_parse_citation_bare_shorthand_returns_none() -> None:
 
 
 def test_parse_citation_with_section_sign_parses_correctly() -> None:
-    shorthand, ref = _parse_citation("CC-Py §Functions.2")
-    assert shorthand == "CC-Py"
-    assert ref == "Functions.2"
+    shorthand, ref = _parse_citation("HTWS §Subordinating.2")
+    assert shorthand == "HTWS"
+    assert ref == "Subordinating.2"
 
 
 def test_bare_shorthand_nl_query_routes_to_scoped_nl_search() -> None:

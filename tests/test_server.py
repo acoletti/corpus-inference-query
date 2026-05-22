@@ -30,9 +30,11 @@ from corpus_inference_query.server import (
 
 def _make_section(citation="CC §1", content="some content"):
     from corpus_inference_query.indexer import Section
+    # Derive shorthand from citation prefix (before §) if present
+    shorthand = citation.split(" §")[0] if " §" in citation else "CC"
     return Section(
         corpus_id="test",
-        shorthand="CC",
+        shorthand=shorthand,
         chapter="Ch1",
         section_name="Test Section",
         citation=citation,
@@ -331,22 +333,22 @@ class TestListCorpora:
 
     def test_output_includes_example_citations(self):
         sections = [
-            _make_section("CC §Ch1", "content"),
-            _make_section("CC §Ch2", "content"),
+            _make_section("HTWS §Ch1", "content"),
+            _make_section("HTWS §Ch2", "content"),
         ]
         result = self._run_list_corpora(sections)
-        assert "`CC §Ch1`" in result
-        assert "`CC §Ch2`" in result
+        assert "`HTWS §Ch1`" in result
+        assert "`HTWS §Ch2`" in result
 
     def test_at_most_three_examples_per_corpus(self):
-        sections = [_make_section(f"CC §S{i}", "x") for i in range(10)]
+        sections = [_make_section(f"HTWS §S{i}", "x") for i in range(10)]
         result = self._run_list_corpora(sections)
-        # Only first 3 citations should appear in the table row for CC
-        cc_row = [line for line in result.splitlines() if "| `CC`" in line][0]
-        assert cc_row.count("`CC §") == 3
+        # Only first 3 citations should appear in the table row for HTWS
+        htws_row = [line for line in result.splitlines() if "| `HTWS`" in line][0]
+        assert htws_row.count("`HTWS §") == 3
 
     def test_section_count_in_output(self):
-        sections = [_make_section(f"CC §S{i}", "x") for i in range(5)]
+        sections = [_make_section(f"HTWS §S{i}", "x") for i in range(5)]
         result = self._run_list_corpora(sections)
         assert "5" in result
 
