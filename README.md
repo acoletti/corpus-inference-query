@@ -48,12 +48,6 @@ bash ./scripts/install_local.sh
 ./.venv/bin/corpus-inference-query --help
 ```
 
-Set `EDITABLE_INSTALL=1` for an editable install:
-
-```bash
-EDITABLE_INSTALL=1 bash ./scripts/install_local.sh
-```
-
 ### Vector Search Extras (optional)
 
 ```bash
