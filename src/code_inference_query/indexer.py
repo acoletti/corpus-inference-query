@@ -19,6 +19,8 @@ class Section:
     content: str
     line_start: int
     keywords: set[str] = field(default_factory=set)
+    style_tags: list[str] = field(default_factory=list)
+    type_tags: list[str] = field(default_factory=list)
 
 
 @dataclass

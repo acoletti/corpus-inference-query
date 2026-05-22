@@ -42,6 +42,41 @@ def test_corpus_spec_defaults_tags_to_empty_lists() -> None:
     assert spec.type_tags == []
 
 
+def test_section_carries_style_and_type_tags() -> None:
+    from code_inference_query.indexer import Section
+
+    sec = Section(
+        corpus_id="htws",
+        shorthand="HTWS",
+        chapter="Subordinating",
+        section_name="Subordinating",
+        citation="HTWS §Subordinating",
+        content="The most controlled sentence in English.",
+        line_start=1,
+        keywords={"controlled", "sentence"},
+        style_tags=["subordinating"],
+        type_tags=["essay"],
+    )
+    assert sec.style_tags == ["subordinating"]
+    assert sec.type_tags == ["essay"]
+
+
+def test_section_defaults_tags_to_empty_lists() -> None:
+    from code_inference_query.indexer import Section
+
+    sec = Section(
+        corpus_id="x",
+        shorthand="X",
+        chapter="C",
+        section_name="S",
+        citation="X §S",
+        content="x",
+        line_start=0,
+    )
+    assert sec.style_tags == []
+    assert sec.type_tags == []
+
+
 def test_search_resolves_exact_citation() -> None:
     sections = [
         Section(
