@@ -97,14 +97,15 @@ class TestSuggestRewrite:
 
 
 class TestCheckAgainstStandards:
-    def test_returns_stub_dict(self, repo: CorpusRepository) -> None:
+    def test_returns_detector_dict(self, repo: CorpusRepository) -> None:
         result = repo.check_against_standards("Some text.")
-        assert result["status"] == "not_yet_implemented"
+        assert "violations" in result
         assert "skipped_rules" in result
+        assert "types_used" in result
 
-    def test_captures_text_length(self, repo: CorpusRepository) -> None:
-        result = repo.check_against_standards("Hello.")
-        assert result["text_length"] == len("Hello.")
+    def test_types_used_propagated(self, repo: CorpusRepository) -> None:
+        result = repo.check_against_standards("Hello.", types=["essay"])
+        assert "essay" in result["types_used"]
 
 
 class TestReload:

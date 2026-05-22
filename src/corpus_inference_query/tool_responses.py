@@ -32,11 +32,32 @@ def format_reload(result: ReloadResult) -> str:
     return f"Reloaded {result.doc_count} sections from {result.corpora_count} corpora."
 
 
-def format_check_stub(result: dict[str, Any]) -> str:
-    """Format standards check stub result."""
-    types_str = ", ".join(result.get("types_provided", [])) or "none"
-    return (
-        f"Standards check: not yet implemented (M3).\n"
-        f"Text length: {result['text_length']} characters.\n"
-        f"Configured types: {types_str}."
-    )
+def format_check_results(result: dict[str, Any]) -> str:
+    """Format standards check results as markdown."""
+    violations = result.get("violations", [])
+    skipped = result.get("skipped_rules", [])
+    types_used = result.get("types_used", [])
+
+    lines = []
+
+    if types_used:
+        lines.append(f"**Types:** {', '.join(types_used)}")
+
+    if not violations:
+        lines.append("**Standards check:** No violations found.")
+    else:
+        lines.append(f"**Standards check:** {len(violations)} violation(s) found.")
+        for v in violations:
+            severity = v.get("severity", "info").upper()
+            rule_id = v.get("rule_id", "?")
+            rule_title = v.get("rule_title", "")
+            snippet = v.get("snippet", "")
+            lines.append(f"\n**{severity}** [{rule_id} {rule_title}]")
+            if snippet:
+                lines.append(f"> {snippet[:120]}")
+
+    if skipped:
+        skipped_ids = ", ".join(s.get("rule_id", "?") for s in skipped)
+        lines.append(f"\n*Skipped rules: {skipped_ids}*")
+
+    return "\n".join(lines)

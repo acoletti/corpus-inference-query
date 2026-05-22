@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .corpus_config import load_corpus_specs
+from .detectors.registry import run_all as _run_all_detectors
 from .indexer import Section, build_index
 from .search import (
     _format_result,
@@ -286,13 +287,8 @@ class CorpusRepository:
     def check_against_standards(
         self, text: str, types: list[str] | None = None
     ) -> dict[str, Any]:
-        """M2 stub — detectors implemented in M3."""
-        return {
-            "status": "not_yet_implemented",
-            "text_length": len(text),
-            "types_provided": types or [],
-            "skipped_rules": ["all — detectors ship in M3"],
-        }
+        """Run all applicable writing-standards detectors against text."""
+        return _run_all_detectors(text, types)
 
 
 def _filter_by_length(sections: list[Section], length: str) -> list[Section]:

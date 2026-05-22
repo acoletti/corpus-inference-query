@@ -63,10 +63,9 @@ def _make_mock_repo(**overrides):
     mock.lookup_citation.return_value = "citation result"
     mock.find_exemplars.return_value = "exemplars result"
     mock.check_against_standards.return_value = {
-        "status": "not_yet_implemented",
-        "text_length": 9,
-        "types_provided": [],
-        "skipped_rules": ["all"],
+        "violations": [],
+        "skipped_rules": [],
+        "types_used": [],
     }
     mock.find_similar_voice.return_value = "voice result"
     mock.suggest_opening.return_value = "opening result"
@@ -116,10 +115,9 @@ class TestIntegration:
         result = find_exemplars(style=["subordinating"])
         assert isinstance(result, str)
 
-    def test_check_against_standards_contains_not_yet_implemented(self):
+    def test_check_against_standards_returns_string(self):
         result = check_against_standards("Some text")
         assert isinstance(result, str)
-        assert "not yet implemented" in result
 
     def test_find_similar_voice_returns_string(self):
         result = find_similar_voice("Some text", corpus="HTWS")
@@ -296,18 +294,19 @@ class TestFindExemplars:
 # ---------------------------------------------------------------------------
 
 class TestCheckAgainstStandards:
-    def test_returns_not_yet_implemented_message(self):
+    def test_returns_formatted_string(self):
         mock_repo = _make_mock_repo()
         with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
             result = check_against_standards("Some text")
-        assert "not yet implemented" in result
+        assert isinstance(result, str)
+        assert "Standards check" in result
 
     def test_passes_text_and_types(self):
         captured = {}
         mock_repo = _make_mock_repo()
         mock_repo.check_against_standards.side_effect = (
             lambda text, types=None: captured.update({"text": text, "types": types})
-            or {"status": "not_yet_implemented", "text_length": 0, "types_provided": [], "skipped_rules": []}
+            or {"violations": [], "skipped_rules": [], "types_used": types or []}
         )
         with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
             check_against_standards("hello", types=["essay"])

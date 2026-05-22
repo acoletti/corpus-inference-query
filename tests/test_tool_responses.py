@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from corpus_inference_query.corpus_repository import CorpusSummary, ReloadResult
 from corpus_inference_query.tool_responses import (
-    format_check_stub,
+    format_check_results,
     format_list_corpora,
     format_reload,
 )
@@ -82,35 +82,43 @@ class TestFormatReload:
         assert format_reload(result) == "Reloaded 0 sections from 0 corpora."
 
 
-class TestFormatCheckStub:
-    def test_with_types(self) -> None:
-        result = {
-            "status": "not_yet_implemented",
-            "text_length": 150,
-            "types_provided": ["essay", "guide"],
-            "skipped_rules": ["all — detectors ship in M3"],
-        }
-        formatted = format_check_stub(result)
-        assert "Standards check: not yet implemented (M3)." in formatted
-        assert "Text length: 150 characters." in formatted
-        assert "Configured types: essay, guide." in formatted
+class TestFormatCheckResults:
+    def test_no_violations(self) -> None:
+        result = {"violations": [], "skipped_rules": [], "types_used": ["essay"]}
+        formatted = format_check_results(result)
+        assert "No violations found" in formatted
+        assert "essay" in formatted
 
-    def test_without_types(self) -> None:
+    def test_with_violations(self) -> None:
         result = {
-            "status": "not_yet_implemented",
-            "text_length": 500,
-            "types_provided": [],
+            "violations": [
+                {
+                    "rule_id": "§1",
+                    "rule_title": "Clarity",
+                    "severity": "warning",
+                    "snippet": "This is a very long sentence.",
+                }
+            ],
             "skipped_rules": [],
+            "types_used": [],
         }
-        formatted = format_check_stub(result)
-        assert "Text length: 500 characters." in formatted
-        assert "Configured types: none." in formatted
+        formatted = format_check_results(result)
+        assert "1 violation" in formatted
+        assert "§1" in formatted
+        assert "WARNING" in formatted
 
-    def test_large_text(self) -> None:
+    def test_with_skipped_rules(self) -> None:
         result = {
-            "status": "not_yet_implemented",
-            "text_length": 50000,
-            "types_provided": ["novel"],
-            "skipped_rules": ["all"],
+            "violations": [],
+            "skipped_rules": [{"rule_id": "§13", "rule_title": "Voice Fidelity", "reason": "personal_corpus_empty"}],
+            "types_used": [],
         }
-        assert "Text length: 50000 characters." in format_check_stub(result)
+        formatted = format_check_results(result)
+        assert "§13" in formatted
+        assert "Skipped" in formatted
+
+    def test_empty_result(self) -> None:
+        result = {"violations": [], "skipped_rules": [], "types_used": []}
+        formatted = format_check_results(result)
+        assert isinstance(formatted, str)
+        assert len(formatted) > 0

@@ -64,6 +64,11 @@ class TestRegistry:
         result = run_all("Short text.", types=["email"])
         assert isinstance(result["violations"], list)
 
+    def test_run_all_returns_types_used(self) -> None:
+        result = run_all("Some text.", types=["essay"])
+        assert "types_used" in result
+        assert "essay" in result["types_used"]
+
 
 class TestClarity:
     def test_long_sentence_flagged(self) -> None:
