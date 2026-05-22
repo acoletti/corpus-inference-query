@@ -276,6 +276,33 @@ def test_vector_search_returns_relevant_section(vector_env) -> None:
     assert results[0].citation == "FP2e §Generators"
 
 
+def test_build_index_loads_htws_fixture() -> None:
+    """build_index reads the fixture HTWS markdown and produces tagged sections."""
+    from pathlib import Path
+    from corpus_inference_query.indexer import build_index
+
+    fixture_root = Path(__file__).parent / "fixtures" / "corpus"
+    sections = build_index(fixture_root)
+
+    htws = [s for s in sections if s.shorthand == "HTWS"]
+    assert len(htws) >= 2  # Subordinating + Additive headings in the fixture
+    assert any("Subordinating" in s.section_name for s in htws)
+    assert any("Additive" in s.section_name for s in htws)
+
+
+def test_build_index_loads_strunk_fixture() -> None:
+    """build_index reads the Strunk fixture and emits an Omit Needless Words section."""
+    from pathlib import Path
+    from corpus_inference_query.indexer import build_index
+
+    fixture_root = Path(__file__).parent / "fixtures" / "corpus"
+    sections = build_index(fixture_root)
+
+    strunk = [s for s in sections if s.shorthand == "Strunk"]
+    assert len(strunk) >= 1
+    assert any("Omit Needless Words" in s.section_name for s in strunk)
+
+
 @pytest.mark.skipif(not _VECTOR_DEPS, reason="lancedb and fastembed required for vector tests")
 def test_build_vector_store_cache_hit_skips_rebuild(vector_env) -> None:
     """Second call with same sections must reuse the cached table."""

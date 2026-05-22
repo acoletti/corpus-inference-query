@@ -205,6 +205,14 @@ def build_index(corpus_path: Path) -> list[Section]:
                 all_sections.extend(_index_design_patterns(spec, corpus_path))
             elif spec.corpus_id == "example-code-2e":
                 all_sections.extend(_index_example_code(spec, corpus_path))
+            else:
+                # Generic directory corpus: index every .md file under the
+                # directory using the spec's section pattern.
+                dir_path = corpus_path / spec.relative_path
+                if dir_path.exists():
+                    for md_file in sorted(dir_path.rglob("*.md")):
+                        text = md_file.read_text(errors="replace")
+                        all_sections.extend(_index_markdown_sections(spec, text))
             continue
 
         file_path = corpus_path / spec.relative_path
