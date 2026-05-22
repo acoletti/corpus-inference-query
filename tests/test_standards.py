@@ -410,13 +410,6 @@ _ARTICLE_MULTI_PARA = "\n\n".join([
     "The second implication concerns editorial oversight and fact-checking.",
 ])
 
-_ARTICLE_NO_NUT_GRAF = "\n\n".join([
-    "We gathered at the town hall on a cold Tuesday evening in February.",
-    "The chairs were arranged in neat rows, each labelled with a district.",
-    "Outside, the wind rattled the windows as the mayor prepared to speak.",
-    "Nobody quite knew what the announcement would mean for the community.",
-])
-
 # 160 words, no nut-graf markers (no "this", "here", "today", "in this")
 _ARTICLE_NO_NUT_GRAF_LONG = " ".join(["The reporters gathered."] * 5 + ["word"] * 145)
 
@@ -434,8 +427,7 @@ class TestDetectArticle:
         # Under 200 words → no structure warning even without paragraphs
         short = " ".join(["word"] * 150)
         result = detect_article(short, types=["article"])
-        structure_violations = [v for v in result if "structure" in v.rule_title.lower() or "paragraph" in v.snippet.lower()]
-        assert len(structure_violations) == 0
+        assert result == []
 
     def test_long_single_block_flags_structure(self) -> None:
         result = detect_article(_LONG_SINGLE_BLOCK, types=["article"])

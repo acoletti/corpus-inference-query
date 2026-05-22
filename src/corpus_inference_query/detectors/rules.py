@@ -463,8 +463,9 @@ _NEWSLETTER_TYPES = frozenset(["newsletter"])
 _NUT_GRAF_MARKERS = re.compile(r'\b(this|here|today|in this)\b', re.I)
 _MODAL_VERBS_RE = re.compile(r'\b(should|must|shall|may|can)\b', re.I)
 _MARKDOWN_MARKERS = re.compile(r'(#{1,3} |`{1,3}|- |\* )')
-_EMAIL_SOCIAL = frozenset(["please", "thank", "regards", "sincerely", "hi", "hello", "dear"])
-_LETTER_CLOSINGS = frozenset(["sincerely", "regards", "yours", "best", "dear"])
+_EMAIL_GREETINGS = frozenset(["hi", "hello", "dear", "hey"])
+_EMAIL_CLOSINGS = frozenset(["regards", "sincerely", "thanks", "cheers", "best"])
+_LETTER_CLOSINGS = frozenset(["sincerely", "regards", "yours", "best"])
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +512,9 @@ def detect_email(text: str, types: list[str] | None = None) -> list[Violation] |
             snippet=text[:80],
         ))
     text_lower = text.lower()
-    if not any(marker in text_lower for marker in _EMAIL_SOCIAL):
+    has_greeting = any(marker in text_lower for marker in _EMAIL_GREETINGS)
+    has_closing = any(marker in text_lower for marker in _EMAIL_CLOSINGS)
+    if not has_greeting and not has_closing:
         violations.append(Violation(
             rule_id="§B",
             rule_title="Email",
@@ -571,6 +574,7 @@ def detect_newsletter(text: str, types: list[str] | None = None) -> list[Violati
         return []
     violations: list[Violation] = []
     word_count = len(text.split())
+    # thresholds are exclusive
     if word_count > 400:
         violations.append(Violation(
             rule_id="§E",
