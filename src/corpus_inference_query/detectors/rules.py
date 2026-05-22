@@ -451,27 +451,141 @@ def detect_lede_and_title(text: str, types: list[str] | None = None) -> list[Vio
 
 
 # ---------------------------------------------------------------------------
-# Type addenda §A–§J (stubs — filled in Tasks 7–8)
+# Module-level constants for §A–§E type addenda
+# ---------------------------------------------------------------------------
+
+_ARTICLE_TYPES = frozenset(["article", "longform-journalism"])
+_EMAIL_TYPES = frozenset(["email"])
+_LETTER_TYPES = frozenset(["letter", "cover-letter"])
+_TECH_DOC_TYPES = frozenset(["technical-doc", "readme", "rfc"])
+_NEWSLETTER_TYPES = frozenset(["newsletter"])
+
+_NUT_GRAF_MARKERS = re.compile(r'\b(this|here|today|in this)\b', re.I)
+_MODAL_VERBS_RE = re.compile(r'\b(should|must|shall|may|can)\b', re.I)
+_MARKDOWN_MARKERS = re.compile(r'(#{1,3} |`{1,3}|- |\* )')
+_EMAIL_SOCIAL = frozenset(["please", "thank", "regards", "sincerely", "hi", "hello", "dear"])
+_LETTER_CLOSINGS = frozenset(["sincerely", "regards", "yours", "best", "dear"])
+
+
+# ---------------------------------------------------------------------------
+# Type addenda §A–§J (§A–§E implemented; §F–§J stubs)
 # ---------------------------------------------------------------------------
 
 def detect_article(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is None or not any(t in _ARTICLE_TYPES for t in types):
+        return []
+    violations: list[Violation] = []
+    word_count = len(text.split())
+    paragraphs = [p for p in text.split('\n\n') if p.strip()]
+    if len(paragraphs) < 3 and word_count > 200:
+        violations.append(Violation(
+            rule_id="§A",
+            rule_title="Article",
+            severity="warning",
+            snippet=text[:80],
+        ))
+    if word_count > 150:
+        first_sentences = _split_sentences(text)[:3]
+        has_nut_graf = any(_NUT_GRAF_MARKERS.search(s) for s in first_sentences)
+        if not has_nut_graf:
+            first_sent = first_sentences[0] if first_sentences else text
+            violations.append(Violation(
+                rule_id="§A",
+                rule_title="Article",
+                severity="info",
+                snippet=first_sent[:120],
+            ))
+    return violations
 
 
 def detect_email(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is None or not any(t in _EMAIL_TYPES for t in types):
+        return []
+    violations: list[Violation] = []
+    word_count = len(text.split())
+    if word_count > 150:
+        violations.append(Violation(
+            rule_id="§B",
+            rule_title="Email",
+            severity="info",
+            snippet=text[:80],
+        ))
+    text_lower = text.lower()
+    if not any(marker in text_lower for marker in _EMAIL_SOCIAL):
+        violations.append(Violation(
+            rule_id="§B",
+            rule_title="Email",
+            severity="info",
+            snippet=text[:80],
+        ))
+    return violations
 
 
 def detect_letter(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is None or not any(t in _LETTER_TYPES for t in types):
+        return []
+    violations: list[Violation] = []
+    word_count = len(text.split())
+    if word_count < 50:
+        violations.append(Violation(
+            rule_id="§C",
+            rule_title="Letter",
+            severity="info",
+            snippet=text[:80],
+        ))
+    text_lower = text.lower()
+    if not any(marker in text_lower for marker in _LETTER_CLOSINGS):
+        violations.append(Violation(
+            rule_id="§C",
+            rule_title="Letter",
+            severity="info",
+            snippet=text[:80],
+        ))
+    return violations
 
 
 def detect_technical_doc(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is None or not any(t in _TECH_DOC_TYPES for t in types):
+        return []
+    violations: list[Violation] = []
+    if not _MARKDOWN_MARKERS.search(text):
+        violations.append(Violation(
+            rule_id="§D",
+            rule_title="Technical Doc",
+            severity="warning",
+            snippet=text[:80],
+        ))
+    word_count = len(text.split())
+    if word_count > 200 and not _MODAL_VERBS_RE.search(text):
+        violations.append(Violation(
+            rule_id="§D",
+            rule_title="Technical Doc",
+            severity="info",
+            snippet=text[:80],
+        ))
+    return violations
 
 
 def detect_newsletter(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if types is None or not any(t in _NEWSLETTER_TYPES for t in types):
+        return []
+    violations: list[Violation] = []
+    word_count = len(text.split())
+    if word_count > 400:
+        violations.append(Violation(
+            rule_id="§E",
+            rule_title="Newsletter",
+            severity="info",
+            snippet=text[:80],
+        ))
+    elif word_count < 50:
+        violations.append(Violation(
+            rule_id="§E",
+            rule_title="Newsletter",
+            severity="info",
+            snippet=text[:80],
+        ))
+    return violations
 
 
 def detect_op_ed(text: str, types: list[str] | None = None) -> list[Violation] | None:

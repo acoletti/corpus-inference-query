@@ -19,6 +19,11 @@ from corpus_inference_query.detectors.rules import (
     detect_voice_fidelity,
     detect_transitions,
     detect_lede_and_title,
+    detect_article,
+    detect_email,
+    detect_letter,
+    detect_technical_doc,
+    detect_newsletter,
 )
 
 
@@ -390,4 +395,306 @@ class TestLedeAndTitle:
 
     def test_non_applicable_type_skipped(self) -> None:
         result = detect_lede_and_title("Have you ever wondered why?", types=["technical-doc"])
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# §A  Article
+# ---------------------------------------------------------------------------
+
+_LONG_SINGLE_BLOCK = " ".join(["word"] * 210)  # 210 words, no blank lines
+
+_ARTICLE_MULTI_PARA = "\n\n".join([
+    "This piece examines how machine learning changes journalism today.",
+    "The first implication is speed of production and automated content.",
+    "The second implication concerns editorial oversight and fact-checking.",
+])
+
+_ARTICLE_NO_NUT_GRAF = "\n\n".join([
+    "We gathered at the town hall on a cold Tuesday evening in February.",
+    "The chairs were arranged in neat rows, each labelled with a district.",
+    "Outside, the wind rattled the windows as the mayor prepared to speak.",
+    "Nobody quite knew what the announcement would mean for the community.",
+])
+
+# 160 words, no nut-graf markers (no "this", "here", "today", "in this")
+_ARTICLE_NO_NUT_GRAF_LONG = " ".join(["The reporters gathered."] * 5 + ["word"] * 145)
+
+
+class TestDetectArticle:
+    def test_non_article_type_returns_empty(self) -> None:
+        result = detect_article(_LONG_SINGLE_BLOCK, types=["email"])
+        assert result == []
+
+    def test_none_types_returns_empty(self) -> None:
+        result = detect_article(_LONG_SINGLE_BLOCK, types=None)
+        assert result == []
+
+    def test_short_single_block_no_structure_violation(self) -> None:
+        # Under 200 words → no structure warning even without paragraphs
+        short = " ".join(["word"] * 150)
+        result = detect_article(short, types=["article"])
+        structure_violations = [v for v in result if "structure" in v.rule_title.lower() or "paragraph" in v.snippet.lower()]
+        assert len(structure_violations) == 0
+
+    def test_long_single_block_flags_structure(self) -> None:
+        result = detect_article(_LONG_SINGLE_BLOCK, types=["article"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§A" in rule_ids
+        severities = [v.severity for v in result if v.rule_id == "§A"]
+        assert "warning" in severities
+
+    def test_multi_paragraph_article_no_structure_violation(self) -> None:
+        result = detect_article(_ARTICLE_MULTI_PARA, types=["article"])
+        structure_violations = [v for v in result if v.severity == "warning"]
+        assert len(structure_violations) == 0
+
+    def test_nut_graf_present_no_info_violation(self) -> None:
+        text = (
+            "In this article, I will explain how climate change affects coral reefs. "
+            "Scientists have documented a 50% decline over the past three decades. "
+            "The data comes from surveys conducted in the Pacific and Atlantic oceans.\n\n"
+            "Rising water temperatures bleach the coral and disrupt the ecosystem. "
+            "Recovery requires years of stable, cooler conditions that are rarely seen."
+        )
+        result = detect_article(text, types=["article"])
+        info_violations = [v for v in result if v.severity == "info"]
+        assert len(info_violations) == 0
+
+    def test_no_nut_graf_long_text_flags_info(self) -> None:
+        result = detect_article(_ARTICLE_NO_NUT_GRAF_LONG, types=["article"])
+        info_violations = [v for v in result if v.severity == "info"]
+        assert len(info_violations) >= 1
+        assert info_violations[0].rule_id == "§A"
+
+    def test_longform_journalism_type_also_triggers(self) -> None:
+        result = detect_article(_LONG_SINGLE_BLOCK, types=["longform-journalism"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§A" in rule_ids
+
+
+# ---------------------------------------------------------------------------
+# §B  Email
+# ---------------------------------------------------------------------------
+
+_SHORT_EMAIL = "Hi there,\n\nPlease review the attached document.\n\nThanks!"
+
+_LONG_EMAIL = (
+    "Hello team,\n\n"
+    + "This message contains many words. " * 40
+    + "\n\nBest regards."
+)
+
+_NO_GREETING_EMAIL = "The document has been reviewed and approved. Proceed with the next steps in the workflow."
+
+
+class TestDetectEmail:
+    def test_non_email_type_returns_empty(self) -> None:
+        result = detect_email(_LONG_EMAIL, types=["article"])
+        assert result == []
+
+    def test_none_types_returns_empty(self) -> None:
+        result = detect_email(_LONG_EMAIL, types=None)
+        assert result == []
+
+    def test_short_email_with_greeting_no_violations(self) -> None:
+        result = detect_email(_SHORT_EMAIL, types=["email"])
+        assert result == []
+
+    def test_long_email_flagged(self) -> None:
+        result = detect_email(_LONG_EMAIL, types=["email"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§B" in rule_ids
+        long_violations = [v for v in result if "long" in v.snippet.lower() or v.rule_id == "§B"]
+        assert len(long_violations) >= 1
+
+    def test_email_without_greeting_flagged(self) -> None:
+        result = detect_email(_NO_GREETING_EMAIL, types=["email"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§B" in rule_ids
+
+    def test_all_violations_are_info_severity(self) -> None:
+        result = detect_email(_LONG_EMAIL, types=["email"])
+        for v in result:
+            assert v.severity == "info"
+
+    def test_email_with_sincerely_no_greeting_violation(self) -> None:
+        text = "Sincerely, " + "word " * 20
+        result = detect_email(text, types=["email"])
+        greeting_violations = [v for v in result if "greeting" in v.snippet.lower()]
+        assert len(greeting_violations) == 0
+
+
+# ---------------------------------------------------------------------------
+# §C  Letter
+# ---------------------------------------------------------------------------
+
+_SHORT_LETTER = "Hi."
+
+_LONG_LETTER_WITH_CLOSINGS = (
+    "Dear Mr. Smith,\n\n"
+    "I am writing to express my interest in the position advertised on your website. "
+    "My background in software engineering spans over ten years and includes "
+    "substantial experience with distributed systems and cloud infrastructure. "
+    "I have led teams of engineers across three continents and delivered "
+    "mission-critical services to millions of users. I believe my skills and "
+    "experience would make a strong contribution to your organisation.\n\n"
+    "Sincerely,\nJane Doe"
+)
+
+_LETTER_NO_SALUTATION = (
+    "The position requires five years of relevant experience. "
+    "Candidates must demonstrate proficiency in Python and cloud technologies. "
+    "Applications close on the first of next month."
+)
+
+
+class TestDetectLetter:
+    def test_non_letter_type_returns_empty(self) -> None:
+        result = detect_letter(_LONG_LETTER_WITH_CLOSINGS, types=["email"])
+        assert result == []
+
+    def test_none_types_returns_empty(self) -> None:
+        result = detect_letter(_LONG_LETTER_WITH_CLOSINGS, types=None)
+        assert result == []
+
+    def test_well_formed_letter_no_violations(self) -> None:
+        result = detect_letter(_LONG_LETTER_WITH_CLOSINGS, types=["letter"])
+        assert result == []
+
+    def test_short_letter_flagged(self) -> None:
+        result = detect_letter(_SHORT_LETTER, types=["letter"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§C" in rule_ids
+
+    def test_letter_without_salutation_flagged(self) -> None:
+        result = detect_letter(_LETTER_NO_SALUTATION, types=["letter"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§C" in rule_ids
+
+    def test_cover_letter_type_triggers(self) -> None:
+        result = detect_letter(_SHORT_LETTER, types=["cover-letter"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§C" in rule_ids
+
+    def test_all_violations_are_info_severity(self) -> None:
+        result = detect_letter(_LETTER_NO_SALUTATION, types=["letter"])
+        for v in result:
+            assert v.severity == "info"
+
+
+# ---------------------------------------------------------------------------
+# §D  Technical Doc
+# ---------------------------------------------------------------------------
+
+_PLAIN_PROSE_NO_MARKDOWN = (
+    "The system processes requests asynchronously. "
+    "Workers poll a shared queue and execute tasks in order. "
+    "Results are written back to the database after each task completes. "
+    "Clients poll for completion status using the job identifier. "
+    "Timeouts are enforced by a watchdog process that runs every sixty seconds."
+)
+
+_MARKDOWN_DOC = (
+    "## Overview\n\n"
+    "The system **must** handle 1000 requests per second.\n\n"
+    "```python\nretry(n=3)\n```\n\n"
+    "- Workers poll a shared queue.\n"
+    "- Results are written back to the database."
+)
+
+_LONG_PROSE_NO_MODALS = " ".join(
+    ["The system processes requests and workers execute tasks and results get stored."] * 18
+)
+
+
+class TestDetectTechnicalDoc:
+    def test_non_technical_type_returns_empty(self) -> None:
+        result = detect_technical_doc(_PLAIN_PROSE_NO_MARKDOWN, types=["email"])
+        assert result == []
+
+    def test_none_types_returns_empty(self) -> None:
+        result = detect_technical_doc(_PLAIN_PROSE_NO_MARKDOWN, types=None)
+        assert result == []
+
+    def test_well_formed_markdown_doc_no_structure_violation(self) -> None:
+        result = detect_technical_doc(_MARKDOWN_DOC, types=["technical-doc"])
+        structure_violations = [v for v in result if v.severity == "warning"]
+        assert len(structure_violations) == 0
+
+    def test_plain_prose_no_markdown_flags_warning(self) -> None:
+        result = detect_technical_doc(_PLAIN_PROSE_NO_MARKDOWN, types=["technical-doc"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§D" in rule_ids
+        warning_violations = [v for v in result if v.severity == "warning"]
+        assert len(warning_violations) >= 1
+
+    def test_readme_type_triggers(self) -> None:
+        result = detect_technical_doc(_PLAIN_PROSE_NO_MARKDOWN, types=["readme"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§D" in rule_ids
+
+    def test_rfc_type_triggers(self) -> None:
+        result = detect_technical_doc(_PLAIN_PROSE_NO_MARKDOWN, types=["rfc"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§D" in rule_ids
+
+    def test_long_doc_no_modals_flags_info(self) -> None:
+        result = detect_technical_doc(_LONG_PROSE_NO_MODALS, types=["technical-doc"])
+        info_violations = [v for v in result if v.severity == "info"]
+        assert len(info_violations) >= 1
+        assert info_violations[0].rule_id == "§D"
+
+    def test_doc_with_must_no_modal_info_violation(self) -> None:
+        text = "## Setup\n\nYou must install dependencies first. " + "word " * 200
+        result = detect_technical_doc(text, types=["technical-doc"])
+        info_violations = [v for v in result if v.severity == "info"]
+        assert len(info_violations) == 0
+
+
+# ---------------------------------------------------------------------------
+# §E  Newsletter
+# ---------------------------------------------------------------------------
+
+_LONG_NEWSLETTER = "word " * 410
+_SHORT_NEWSLETTER = "word " * 40
+_GOOD_NEWSLETTER = "word " * 300
+
+
+class TestDetectNewsletter:
+    def test_non_newsletter_type_returns_empty(self) -> None:
+        result = detect_newsletter(_LONG_NEWSLETTER, types=["email"])
+        assert result == []
+
+    def test_none_types_returns_empty(self) -> None:
+        result = detect_newsletter(_LONG_NEWSLETTER, types=None)
+        assert result == []
+
+    def test_good_length_newsletter_no_violations(self) -> None:
+        result = detect_newsletter(_GOOD_NEWSLETTER, types=["newsletter"])
+        assert result == []
+
+    def test_long_newsletter_flagged(self) -> None:
+        result = detect_newsletter(_LONG_NEWSLETTER, types=["newsletter"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§E" in rule_ids
+
+    def test_short_newsletter_flagged(self) -> None:
+        result = detect_newsletter(_SHORT_NEWSLETTER, types=["newsletter"])
+        rule_ids = [v.rule_id for v in result]
+        assert "§E" in rule_ids
+
+    def test_all_violations_are_info_severity(self) -> None:
+        result = detect_newsletter(_LONG_NEWSLETTER, types=["newsletter"])
+        for v in result:
+            assert v.severity == "info"
+
+    def test_exactly_400_words_not_flagged(self) -> None:
+        text = "word " * 400
+        result = detect_newsletter(text, types=["newsletter"])
+        assert result == []
+
+    def test_exactly_50_words_not_flagged(self) -> None:
+        text = "word " * 50
+        result = detect_newsletter(text, types=["newsletter"])
         assert result == []
