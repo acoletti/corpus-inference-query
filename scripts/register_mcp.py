@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register the code-inference-query MCP server with Claude Desktop (and optionally Claude Code).
+"""Register the corpus-inference-query MCP server with Claude Desktop (and optionally Claude Code).
 
 This script:
 1. Installs the package via `uv tool install` if the binary is not in PATH.
@@ -24,9 +24,9 @@ _CLAUDE_CODE_SETTINGS = Path.home() / ".claude/settings.json"
 
 
 def _find_binary() -> str | None:
-    """Return the absolute path to the code-inference-query binary, or None."""
+    """Return the absolute path to the corpus-inference-query binary, or None."""
     for path_dir in os.environ.get("PATH", "").split(os.pathsep):
-        candidate = Path(path_dir) / "code-inference-query"
+        candidate = Path(path_dir) / "corpus-inference-query"
         if candidate.exists():
             return str(candidate.resolve())
     return None
@@ -41,7 +41,7 @@ def _install_via_uv(repo_root: Path) -> str:
     binary = _find_binary()
     if binary is None:
         raise RuntimeError(
-            "Installation succeeded but code-inference-query was not found in PATH. "
+            "Installation succeeded but corpus-inference-query was not found in PATH. "
             "Ensure ~/.local/bin (or the uv tool bin dir) is on your PATH."
         )
     return binary
@@ -70,11 +70,11 @@ def _register_claude_desktop(binary_path: str, corpus_path: str | None = None) -
         "command": binary_path,
     }
     if corpus_path:
-        entry["env"] = {"CODE_INFERENCE_CORPUS_PATH": corpus_path}
+        entry["env"] = {"CORPUS_INFERENCE_PATH": corpus_path}
 
-    mcp_servers["code-inference-query"] = entry
+    mcp_servers["corpus-inference-query"] = entry
     _save_json(_CLAUDE_DESKTOP_CONFIG, config)
-    print(f"Registered code-inference-query in {_CLAUDE_DESKTOP_CONFIG}")
+    print(f"Registered corpus-inference-query in {_CLAUDE_DESKTOP_CONFIG}")
 
 
 def _register_claude_code(binary_path: str, corpus_path: str | None = None) -> None:
@@ -87,25 +87,25 @@ def _register_claude_code(binary_path: str, corpus_path: str | None = None) -> N
         "command": binary_path,
     }
     if corpus_path:
-        entry["env"] = {"CODE_INFERENCE_CORPUS_PATH": corpus_path}
+        entry["env"] = {"CORPUS_INFERENCE_PATH": corpus_path}
 
-    mcp_servers["code-inference-query"] = entry
+    mcp_servers["corpus-inference-query"] = entry
     _save_json(_CLAUDE_CODE_SETTINGS, config)
-    print(f"Registered code-inference-query in {_CLAUDE_CODE_SETTINGS}")
+    print(f"Registered corpus-inference-query in {_CLAUDE_CODE_SETTINGS}")
 
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
-    corpus_path = os.environ.get("CODE_INFERENCE_CORPUS_PATH")
+    corpus_path = os.environ.get("CORPUS_INFERENCE_PATH")
     register_claude_code = "--claude-code" in sys.argv
 
     binary = _find_binary()
     if binary is None:
-        print("code-inference-query not found in PATH. Installing via uv tool install ...")
+        print("corpus-inference-query not found in PATH. Installing via uv tool install ...")
         binary = _install_via_uv(repo_root)
         print(f"Installed at {binary}")
     else:
-        print(f"Found code-inference-query at {binary}")
+        print(f"Found corpus-inference-query at {binary}")
 
     _register_claude_desktop(binary, corpus_path)
 
