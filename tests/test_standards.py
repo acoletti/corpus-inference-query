@@ -12,6 +12,10 @@ from corpus_inference_query.detectors.rules import (
     detect_sentence_rhythm,
     detect_audience_fit,
     detect_argument_honesty,
+    detect_opening_craft,
+    detect_closing_craft,
+    detect_concrete_abstract,
+    detect_style_consciousness,
 )
 
 
@@ -164,9 +168,9 @@ class TestAudienceFit:
         result = detect_audience_fit("Some text.", types=None)
         assert result is None
 
-    def test_unknown_type_returns_empty(self) -> None:
-        result = detect_audience_fit("Some text.", types=["essay"])
-        assert isinstance(result, list)
+    def test_unrecognized_type_returns_empty(self) -> None:
+        result = detect_audience_fit("Some text.", types=["podcast"])
+        assert result == []
 
 
 class TestArgumentHonesty:
@@ -184,3 +188,118 @@ class TestArgumentHonesty:
     def test_clean_argument_no_violation(self) -> None:
         text = "The data shows a 15% improvement. Three independent studies confirm this result."
         assert detect_argument_honesty(text) == []
+
+
+class TestOpeningCraft:
+    def test_first_person_opener_flagged(self) -> None:
+        text = "I believe this approach is correct. The evidence supports the claim."
+        result = detect_opening_craft(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§9"
+        assert result[0].severity == "warning"
+
+    def test_my_opener_flagged(self) -> None:
+        text = "My experience with this framework has been largely positive. Others agree."
+        result = detect_opening_craft(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§9"
+
+    def test_clean_opening_no_violation(self) -> None:
+        text = "The data tells a clear story. Adoption grew 40% last quarter."
+        result = detect_opening_craft(text)
+        assert result == []
+
+    def test_empty_text_returns_empty(self) -> None:
+        assert detect_opening_craft("") == []
+
+    def test_mid_sentence_i_not_flagged(self) -> None:
+        # "I" not at the start of the first sentence should not trigger
+        text = "When I look at the numbers, the trend is clear. Growth accelerated."
+        result = detect_opening_craft(text)
+        assert result == []
+
+
+class TestClosingCraft:
+    def test_etc_closer_flagged(self) -> None:
+        text = "The team reviewed the code. They checked formatting, style, logic, etc."
+        result = detect_closing_craft(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§10"
+        assert result[0].severity == "info"
+
+    def test_and_so_on_closer_flagged(self) -> None:
+        text = "We support Python, Ruby, Go, and so on."
+        result = detect_closing_craft(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§10"
+
+    def test_too_short_closer_flagged(self) -> None:
+        # Fewer than 4 words in last sentence
+        text = "The framework is reliable. Use it."
+        result = detect_closing_craft(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§10"
+
+    def test_clean_closing_no_violation(self) -> None:
+        text = "The experiment succeeded. The results validate our hypothesis and open new directions for research."
+        result = detect_closing_craft(text)
+        assert result == []
+
+    def test_empty_text_returns_empty(self) -> None:
+        assert detect_closing_craft("") == []
+
+
+class TestConcreteAbstract:
+    def test_high_abstract_density_flagged(self) -> None:
+        # Many abstract nouns above 15% threshold with >=30 words
+        text = (
+            "The implementation of the transformation required the commitment of the "
+            "organization to the achievement of improvement through the establishment "
+            "of governance and the recognition of the importance of collaboration and "
+            "communication."
+        )
+        result = detect_concrete_abstract(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§11"
+        assert result[0].severity == "warning"
+
+    def test_low_abstract_density_clean(self) -> None:
+        text = (
+            "The dog ran across the yard. It jumped over the fence and landed in the "
+            "grass. The children laughed and chased after it down the street."
+        )
+        result = detect_concrete_abstract(text)
+        assert result == []
+
+    def test_fewer_than_30_words_skipped(self) -> None:
+        # Under 30 words should return [] even with abstract terms
+        text = "The implementation of transformation through commitment to organization."
+        result = detect_concrete_abstract(text)
+        assert result == []
+
+    def test_empty_text_returns_empty(self) -> None:
+        assert detect_concrete_abstract("") == []
+
+
+class TestStyleConsciousness:
+    def test_consecutive_same_start_flagged(self) -> None:
+        text = "The dog barked loudly. The cat hissed back. The bird flew away."
+        result = detect_style_consciousness(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§12"
+        assert result[0].severity == "info"
+
+    def test_varied_sentence_starts_clean(self) -> None:
+        text = "The dog barked loudly. A cat hissed back. Then the bird flew away."
+        result = detect_style_consciousness(text)
+        assert result == []
+
+    def test_single_sentence_returns_empty(self) -> None:
+        assert detect_style_consciousness("One sentence here.") == []
+
+    def test_multiple_consecutive_same_starts(self) -> None:
+        # Three consecutive sentences starting with "The" — two pairs flagged
+        text = "The sun rose early. The moon had just set. The stars were fading fast."
+        result = detect_style_consciousness(text)
+        assert result is not None and len(result) >= 2
+        assert result[0].rule_id == "§12"

@@ -98,20 +98,20 @@ _CASUAL_MARKERS = frozenset(['kinda', 'gonna', 'wanna', 'gotta', 'awesome', 'tot
 _FORMAL_TYPES = frozenset(['technical-doc', 'rfc', 'white-paper', 'memo', 'letter', 'cover-letter'])
 
 _FK_RANGES: dict[str, tuple[float, float]] = {
-    "email": (55.0, 85.0),
-    "letter": (55.0, 85.0),
-    "newsletter": (55.0, 85.0),
-    "blog-post": (55.0, 85.0),
-    "regular-blog": (55.0, 85.0),
-    "technical-doc": (25.0, 60.0),
-    "rfc": (25.0, 60.0),
-    "readme": (25.0, 60.0),
-    "white-paper": (25.0, 60.0),
+    "email": (60.0, 80.0),
+    "letter": (60.0, 80.0),
+    "newsletter": (60.0, 80.0),
+    "blog-post": (60.0, 80.0),
+    "regular-blog": (60.0, 80.0),  # alias for blog-post
+    "technical-doc": (30.0, 60.0),
+    "rfc": (30.0, 60.0),
+    "readme": (30.0, 60.0),
+    "white-paper": (30.0, 60.0),
     "memo": (40.0, 70.0),
-    "speech": (65.0, 95.0),
-    "talk-transcript": (65.0, 95.0),
-    "op-ed": (45.0, 75.0),
-    "article": (45.0, 75.0),
+    "speech": (70.0, 90.0),
+    "talk-transcript": (70.0, 90.0),
+    "op-ed": (50.0, 70.0),
+    "article": (50.0, 70.0),
     "essay": (40.0, 70.0),
 }
 
@@ -214,16 +214,18 @@ def detect_voice_agency(text: str, types: list[str] | None = None) -> list[Viola
 def detect_diction_register(text: str, types: list[str] | None = None) -> list[Violation] | None:
     if not types or not any(t in _FORMAL_TYPES for t in types):
         return []
-    words_lower = set(w.lower().strip('.,!?;:()"\'') for w in text.split())
-    found = words_lower & _CASUAL_MARKERS
-    if not found:
-        return []
-    return [Violation(
-        rule_id="§5",
-        rule_title="Diction and Register",
-        severity="warning",
-        snippet=f"Casual marker(s) in formal context: {', '.join(sorted(found))}",
-    )]
+    violations = []
+    for sent in _split_sentences(text):
+        for word in sent.split():
+            if word.lower().strip('.,!?;:()"\'') in _CASUAL_MARKERS:
+                violations.append(Violation(
+                    rule_id="§5",
+                    rule_title="Diction and Register",
+                    severity="warning",
+                    snippet=sent[:120],
+                ))
+                break  # one violation per sentence
+    return violations
 
 
 def detect_sentence_rhythm(text: str, types: list[str] | None = None) -> list[Violation] | None:
@@ -234,16 +236,13 @@ def detect_sentence_rhythm(text: str, types: list[str] | None = None) -> list[Vi
         if len(sentences) < 3:
             continue
         lengths = [len(s.split()) for s in sentences]
-        try:
-            std_dev = statistics.stdev(lengths)
-        except statistics.StatisticsError:
-            continue
+        std_dev = statistics.stdev(lengths)
         if std_dev < 3:
             violations.append(Violation(
                 rule_id="§6",
                 rule_title="Sentence Rhythm",
                 severity="info",
-                snippet=para[:120],
+                snippet=sentences[0][:120],
             ))
     return violations
 
@@ -262,7 +261,7 @@ def detect_audience_fit(text: str, types: list[str] | None = None) -> list[Viola
                 rule_id="§7",
                 rule_title="Audience Fit",
                 severity="info",
-                snippet=f"Flesch Reading Ease {fre:.1f} (expected {lo:.0f}–{hi:.0f} for type '{t}')",
+                snippet=text[:80],
             ))
     return violations
 
@@ -301,19 +300,79 @@ def detect_argument_honesty(text: str, types: list[str] | None = None) -> list[V
 
 
 def detect_opening_craft(text: str, types: list[str] | None = None) -> list[Violation] | None:
+    sentences = _split_sentences(text)
+    if not sentences:
+        return []
+    first = sentences[0]
+    first_word = first.split()[0].lower() if first.split() else ""
+    if first_word in ("i", "my"):
+        return [Violation(
+            rule_id="§9",
+            rule_title="Opening Craft",
+            severity="warning",
+            snippet=first,
+        )]
     return []
 
 
 def detect_closing_craft(text: str, types: list[str] | None = None) -> list[Violation] | None:
+    sentences = _split_sentences(text)
+    if not sentences:
+        return []
+    last = sentences[-1]
+    _LAZY_CLOSERS = ("etc.", "and so on", "and so forth", "among others")
+    last_stripped = last.rstrip().rstrip('.')
+    if last.rstrip().endswith("etc.") or any(last_stripped.endswith(closer) for closer in _LAZY_CLOSERS):
+        return [Violation(
+            rule_id="§10",
+            rule_title="Closing Craft",
+            severity="info",
+            snippet=last[:120],
+        )]
+    if len(last.split()) < 4:
+        return [Violation(
+            rule_id="§10",
+            rule_title="Closing Craft",
+            severity="info",
+            snippet=last,
+        )]
     return []
 
 
 def detect_concrete_abstract(text: str, types: list[str] | None = None) -> list[Violation] | None:
+    words = text.split()
+    total_words = len(words)
+    if total_words < 30:
+        return []
+    abstract_count = len(_ABSTRACT_NOUN_RE.findall(text))
+    if abstract_count / total_words > 0.15:
+        return [Violation(
+            rule_id="§11",
+            rule_title="Concrete vs. Abstract",
+            severity="warning",
+            snippet=text[:80],
+        )]
     return []
 
 
 def detect_style_consciousness(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    sentences = _split_sentences(text)
+    if len(sentences) < 2:
+        return []
+    violations = []
+    for i in range(len(sentences) - 1):
+        words_curr = sentences[i].split()
+        words_next = sentences[i + 1].split()
+        if not words_curr or not words_next:
+            continue
+        if words_curr[0].lower() == words_next[0].lower():
+            violations.append(Violation(
+                rule_id="§12",
+                rule_title="Style Consciousness",
+                severity="info",
+                snippet=sentences[i + 1][:120],
+            ))
+    return violations
 
 
 def detect_voice_fidelity(text: str, types: list[str] | None = None) -> list[Violation] | None:
