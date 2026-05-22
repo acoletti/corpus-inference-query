@@ -1,0 +1,21 @@
+# Placeholder writing-corpus manifest.
+# M1: not parsed (specs are still hardcoded in corpus_config.py).
+# M2: replaced by a real loader that reads this file.
+
+[[source]]
+shorthand = "HTWS"
+path = "references/fish-howtowriteasentence/"
+title = "How to Write a Sentence (fixture stub)"
+author = "Stanley Fish"
+year = 2011
+default_style = ["subordinating"]
+default_type = ["essay", "book"]
+
+[[source]]
+shorthand = "Strunk"
+path = "references/strunk-elements-of-style/"
+title = "Elements of Style (fixture stub)"
+author = "Strunk and White"
+year = 1959
+default_style = []
+default_type = ["essay"]
