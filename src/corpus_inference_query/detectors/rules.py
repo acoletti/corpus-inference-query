@@ -95,6 +95,9 @@ _ABSTRACT_NOUN_RE = re.compile(r'\b\w+(?:tion|ness|ment|ity|ism|ance|ence)\b', r
 
 # Constants for §5–§8 detectors
 _CASUAL_MARKERS = frozenset(['kinda', 'gonna', 'wanna', 'gotta', 'awesome', 'totally', 'literally', 'basically'])
+
+# Constants for §9–§12 detectors
+_LAZY_CLOSERS = frozenset(["etc", "and so on", "and so forth", "among others"])
 _FORMAL_TYPES = frozenset(['technical-doc', 'rfc', 'white-paper', 'memo', 'letter', 'cover-letter'])
 
 _FK_RANGES: dict[str, tuple[float, float]] = {
@@ -304,7 +307,11 @@ def detect_opening_craft(text: str, types: list[str] | None = None) -> list[Viol
     if not sentences:
         return []
     first = sentences[0]
-    first_word = first.split()[0].lower() if first.split() else ""
+    parts = first.split()
+    if not parts:
+        return []
+    first_word = parts[0].lower()
+    # flag self-centered openers and dangling-relativizer openers
     if first_word in ("i", "my") or first_word in {"which", "who", "that", "whom", "whose"}:
         return [Violation(
             rule_id="§9",
@@ -320,9 +327,8 @@ def detect_closing_craft(text: str, types: list[str] | None = None) -> list[Viol
     if not sentences:
         return []
     last = sentences[-1]
-    _LAZY_CLOSERS = ("etc.", "and so on", "and so forth", "among others")
-    last_stripped = last.rstrip().rstrip('.')
-    if last.rstrip().endswith("etc.") or any(last_stripped.endswith(closer) for closer in _LAZY_CLOSERS):
+    last_normalized = last.rstrip('.,!? ').lower()
+    if any(last_normalized.endswith(c) for c in _LAZY_CLOSERS):
         return [Violation(
             rule_id="§10",
             rule_title="Closing Craft",
@@ -344,6 +350,7 @@ def detect_concrete_abstract(text: str, types: list[str] | None = None) -> list[
     total_words = len(words)
     if total_words < 30:
         return []
+    # reuses §4's nominalization regex — same pattern, different threshold
     abstract_count = len(_ABSTRACT_NOUN_RE.findall(text))
     if abstract_count / total_words > 0.15:
         return [Violation(

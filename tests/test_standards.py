@@ -254,6 +254,14 @@ class TestClosingCraft:
     def test_empty_text_returns_empty(self) -> None:
         assert detect_closing_craft("") == []
 
+    def test_and_so_forth_ender_flagged(self) -> None:
+        result = detect_closing_craft("These include forms, functions, and so forth.")
+        assert result is not None and len(result) >= 1
+
+    def test_among_others_ender_flagged(self) -> None:
+        result = detect_closing_craft("We studied Python, Java, and Rust, among others.")
+        assert result is not None and len(result) >= 1
+
 
 class TestConcreteAbstract:
     def test_high_abstract_density_flagged(self) -> None:
