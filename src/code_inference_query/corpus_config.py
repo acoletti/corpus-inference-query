@@ -16,6 +16,8 @@ class CorpusSpec:
     subsection_pattern: re.Pattern | None = None
     description: str = ""
     is_directory: bool = False
+    style_tags: list[str] = field(default_factory=list)
+    type_tags: list[str] = field(default_factory=list)
 
 
 # Section heading patterns per corpus

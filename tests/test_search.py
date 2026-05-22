@@ -10,6 +10,38 @@ from code_inference_query.search import _parse_citation, _score_section, search
 _VECTOR_DEPS = importlib.util.find_spec("lancedb") and importlib.util.find_spec("fastembed")
 
 
+def test_corpus_spec_carries_style_and_type_tags() -> None:
+    from code_inference_query.corpus_config import CorpusSpec
+    import re
+
+    spec = CorpusSpec(
+        corpus_id="htws",
+        shorthand="HTWS",
+        relative_path="references/fish-howtowriteasentence/",
+        section_pattern=re.compile(r"^# (.+)$"),
+        description="How to Write a Sentence",
+        is_directory=True,
+        style_tags=["subordinating"],
+        type_tags=["essay", "book"],
+    )
+    assert spec.style_tags == ["subordinating"]
+    assert spec.type_tags == ["essay", "book"]
+
+
+def test_corpus_spec_defaults_tags_to_empty_lists() -> None:
+    from code_inference_query.corpus_config import CorpusSpec
+    import re
+
+    spec = CorpusSpec(
+        corpus_id="x",
+        shorthand="X",
+        relative_path="x.md",
+        section_pattern=re.compile(r"."),
+    )
+    assert spec.style_tags == []
+    assert spec.type_tags == []
+
+
 def test_search_resolves_exact_citation() -> None:
     sections = [
         Section(
