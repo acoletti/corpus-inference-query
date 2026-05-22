@@ -8,6 +8,10 @@ from corpus_inference_query.detectors.rules import (
     detect_cohesion,
     detect_concision,
     detect_voice_agency,
+    detect_diction_register,
+    detect_sentence_rhythm,
+    detect_audience_fit,
+    detect_argument_honesty,
 )
 
 
@@ -116,3 +120,67 @@ class TestVoiceAgency:
         text = "The implementation of the transformation required the commitment of the organization to the achievement of the improvement."
         result = detect_voice_agency(text)
         assert result is not None and len(result) >= 1
+
+
+class TestDictionRegister:
+    def test_casual_in_formal_type_flagged(self) -> None:
+        text = "The system is gonna be totally awesome once we fix this."
+        result = detect_diction_register(text, types=["technical-doc"])
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§5"
+
+    def test_casual_in_informal_type_clean(self) -> None:
+        text = "This is gonna be awesome, I promise!"
+        assert detect_diction_register(text, types=["blog-post"]) == []
+
+    def test_no_types_no_violation(self) -> None:
+        text = "It's kinda like a function."
+        assert detect_diction_register(text, types=None) == []
+
+
+class TestSentenceRhythm:
+    def test_uniform_short_sentences_flagged(self) -> None:
+        text = "Dogs bark. Cats meow. Birds fly. Fish swim. Mice run."
+        result = detect_sentence_rhythm(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§6"
+
+    def test_varied_sentences_clean(self) -> None:
+        text = "Dogs bark. The cat sat quietly on the mat, watching the birds outside the window. Mice run."
+        assert detect_sentence_rhythm(text) == []
+
+    def test_fewer_than_three_sentences_clean(self) -> None:
+        assert detect_sentence_rhythm("Hello. World.") == []
+
+
+class TestAudienceFit:
+    def test_complex_email_flagged(self) -> None:
+        long_sent = "The multifaceted ramifications of the aforementioned contractual obligations necessitate immediate remediation of the underlying systemic deficiencies which have been identified."
+        result = detect_audience_fit(long_sent, types=["email"])
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§7"
+
+    def test_no_types_returns_none(self) -> None:
+        result = detect_audience_fit("Some text.", types=None)
+        assert result is None
+
+    def test_unknown_type_returns_empty(self) -> None:
+        result = detect_audience_fit("Some text.", types=["essay"])
+        assert isinstance(result, list)
+
+
+class TestArgumentHonesty:
+    def test_hedge_cluster_flagged(self) -> None:
+        text = "It perhaps seems like the proposal could possibly work, though it arguably might need more thought and may require revision."
+        result = detect_argument_honesty(text)
+        assert result is not None and len(result) >= 1
+        assert result[0].rule_id == "§8"
+
+    def test_bare_intensifier_flagged(self) -> None:
+        text = "Obviously this is the best approach. Clearly everyone agrees."
+        result = detect_argument_honesty(text)
+        assert result is not None and len(result) >= 1
+
+    def test_clean_argument_no_violation(self) -> None:
+        text = "The data shows a 15% improvement. Three independent studies confirm this result."
+        assert detect_argument_honesty(text) == []

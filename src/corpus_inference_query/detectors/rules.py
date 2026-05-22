@@ -93,6 +93,38 @@ _WORDY_PATTERNS: list[tuple[re.Pattern, str]] = [
 _PASSIVE_RE = re.compile(r'\b(was|were|is|are|am|been|be)\s+\w+(?:ed|en)\b', re.I)
 _ABSTRACT_NOUN_RE = re.compile(r'\b\w+(?:tion|ness|ment|ity|ism|ance|ence)\b', re.I)
 
+# Constants for §5–§8 detectors
+_CASUAL_MARKERS = frozenset(['kinda', 'gonna', 'wanna', 'gotta', 'awesome', 'totally', 'literally', 'basically'])
+_FORMAL_TYPES = frozenset(['technical-doc', 'rfc', 'white-paper', 'memo', 'letter', 'cover-letter'])
+
+_FK_RANGES: dict[str, tuple[float, float]] = {
+    "email": (55.0, 85.0),
+    "letter": (55.0, 85.0),
+    "newsletter": (55.0, 85.0),
+    "blog-post": (55.0, 85.0),
+    "regular-blog": (55.0, 85.0),
+    "technical-doc": (25.0, 60.0),
+    "rfc": (25.0, 60.0),
+    "readme": (25.0, 60.0),
+    "white-paper": (25.0, 60.0),
+    "memo": (40.0, 70.0),
+    "speech": (65.0, 95.0),
+    "talk-transcript": (65.0, 95.0),
+    "op-ed": (45.0, 75.0),
+    "article": (45.0, 75.0),
+    "essay": (40.0, 70.0),
+}
+
+_HEDGE_WORDS = ['seems', 'appears', 'arguably', 'perhaps', 'possibly', 'might', 'could', 'may']
+_INTENSIFIER_PATTERNS = [
+    re.compile(r'\bobviously\b', re.I),
+    re.compile(r'\bclearly\b', re.I),
+    re.compile(r'\bcertainly\b', re.I),
+    re.compile(r'\beveryone knows\b', re.I),
+    re.compile(r'\bit is clear\b', re.I),
+    re.compile(r'\bneedless to say\b', re.I),
+]
+
 
 # ---------------------------------------------------------------------------
 # Universal rules §1–§15 (stubs — filled in Tasks 3–6)
@@ -180,19 +212,92 @@ def detect_voice_agency(text: str, types: list[str] | None = None) -> list[Viola
 
 
 def detect_diction_register(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if not types or not any(t in _FORMAL_TYPES for t in types):
+        return []
+    words_lower = set(w.lower().strip('.,!?;:()"\'') for w in text.split())
+    found = words_lower & _CASUAL_MARKERS
+    if not found:
+        return []
+    return [Violation(
+        rule_id="§5",
+        rule_title="Diction and Register",
+        severity="warning",
+        snippet=f"Casual marker(s) in formal context: {', '.join(sorted(found))}",
+    )]
 
 
 def detect_sentence_rhythm(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()] or [text]
+    violations = []
+    for para in paragraphs:
+        sentences = _split_sentences(para)
+        if len(sentences) < 3:
+            continue
+        lengths = [len(s.split()) for s in sentences]
+        try:
+            std_dev = statistics.stdev(lengths)
+        except statistics.StatisticsError:
+            continue
+        if std_dev < 3:
+            violations.append(Violation(
+                rule_id="§6",
+                rule_title="Sentence Rhythm",
+                severity="info",
+                snippet=para[:120],
+            ))
+    return violations
 
 
 def detect_audience_fit(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    if not types:
+        return None  # skip: type_unknown
+    matched = [(t, _FK_RANGES[t]) for t in types if t in _FK_RANGES]
+    if not matched:
+        return []
+    fre = _flesch_reading_ease(text)
+    violations = []
+    for t, (lo, hi) in matched:
+        if not (lo <= fre <= hi):
+            violations.append(Violation(
+                rule_id="§7",
+                rule_title="Audience Fit",
+                severity="info",
+                snippet=f"Flesch Reading Ease {fre:.1f} (expected {lo:.0f}–{hi:.0f} for type '{t}')",
+            ))
+    return violations
 
 
 def detect_argument_honesty(text: str, types: list[str] | None = None) -> list[Violation] | None:
-    return []
+    violations = []
+    words = text.lower().split()
+
+    # Check for hedge word clusters (3+ in 50-word windows)
+    window_size = min(50, len(words)) if words else 0
+    if window_size > 0:
+        for i in range(len(words) - window_size + 1):
+            window = words[i:i + window_size]
+            count = sum(1 for w in window if w.strip('.,!?;:"\'') in _HEDGE_WORDS)
+            if count >= 3:
+                snippet = ' '.join(words[i:i + 12])
+                violations.append(Violation(
+                    rule_id="§8",
+                    rule_title="Argument Honesty",
+                    severity="warning",
+                    snippet=snippet[:120],
+                ))
+                break
+
+    # Check for intensifier patterns
+    for pattern in _INTENSIFIER_PATTERNS:
+        for m in pattern.finditer(text):
+            violations.append(Violation(
+                rule_id="§8",
+                rule_title="Argument Honesty",
+                severity="warning",
+                snippet=f'"{m.group()}" — unsupported intensifier',
+                span=(m.start(), m.end()),
+            ))
+    return violations
 
 
 def detect_opening_craft(text: str, types: list[str] | None = None) -> list[Violation] | None:
