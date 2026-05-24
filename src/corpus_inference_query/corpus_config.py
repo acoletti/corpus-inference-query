@@ -22,6 +22,7 @@ class CorpusSpec:
     title: str = ""
     author: str = ""
     year: int = 0
+    chunking_strategy: str = "heading"
 
 
 # Section heading patterns per corpus
@@ -81,6 +82,7 @@ def load_corpus_specs(toml_path: Path) -> list[CorpusSpec]:
             title=src.get("title", ""),
             author=src.get("author", ""),
             year=int(src.get("year", 0)),
+            chunking_strategy=src.get("chunking_strategy", "heading"),
         ))
     return specs
 

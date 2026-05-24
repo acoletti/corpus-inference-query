@@ -139,6 +139,68 @@ def suggest_rewrite(text: str, target_style: str, top_k: int = 5, max_tokens: in
 
 
 @mcp.tool()
+def explore_concept(concept: str, corpus: str | None = None, top_k: int = 5, max_tokens: int = 1500) -> str:
+    """Search the corpus for passages related to a Jungian concept.
+
+    Args:
+        concept: Jungian concept name (e.g. "shadow", "individuation", "dream_work").
+        corpus: Corpus shorthand to restrict to.
+        top_k: Number of results. Default 5, max 20.
+        max_tokens: Target response size. Default 1500, max 4000.
+    """
+    from .concepts import concept_search_query  # noqa: PLC0415
+
+    top_k = max(1, min(top_k, _TOP_K_CEILING))
+    max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
+    query_text = concept_search_query(concept)
+    return _get_repo().search(query_text, top_k=top_k, corpus=corpus, max_chars=max_tokens * _CHARS_PER_TOKEN)
+
+
+@mcp.tool()
+def analyze_with_concept(text: str, concept: str, max_tokens: int = 1500) -> str:
+    """Analyze text through the lens of a Jungian concept using local inference.
+
+    Args:
+        text: Text to analyze.
+        concept: Jungian concept to apply (e.g. "shadow", "individuation").
+        max_tokens: Target response size. Default 1500, max 4000.
+    """
+    from .concepts import concept_search_query  # noqa: PLC0415
+    from .ollama_facade import get_facade  # noqa: PLC0415
+
+    max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
+    query_text = concept_search_query(concept)
+    context = _get_repo().search(query_text, top_k=3, max_chars=2000 * _CHARS_PER_TOKEN)
+    facade = get_facade()
+    if facade is None:
+        return f"[inference unavailable — showing retrieval results]\n\n{context}"
+    system = f"You are a Jungian psychology expert. Analyze the user's text through the concept of '{concept}'. Ground your analysis in the provided corpus excerpts."
+    user_msg = f"Corpus context:\n{context}\n\nText to analyze:\n{text}"
+    result = facade.complete(system, user_msg)
+    return result if result else f"[inference failed — showing retrieval results]\n\n{context}"
+
+
+@mcp.tool()
+def concept_connections(concept_a: str, concept_b: str, top_k: int = 3, max_tokens: int = 1500) -> str:
+    """Find passages that discuss two Jungian concepts together.
+
+    Args:
+        concept_a: First concept (e.g. "shadow").
+        concept_b: Second concept (e.g. "individuation").
+        top_k: Number of results. Default 3, max 20.
+        max_tokens: Target response size. Default 1500, max 4000.
+    """
+    from .concepts import concept_search_query  # noqa: PLC0415
+
+    top_k = max(1, min(top_k, _TOP_K_CEILING))
+    max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
+    q_a = concept_search_query(concept_a)
+    q_b = concept_search_query(concept_b)
+    combined = f"{q_a} {q_b}"
+    return _get_repo().search(combined, top_k=top_k, max_chars=max_tokens * _CHARS_PER_TOKEN)
+
+
+@mcp.tool()
 def reload() -> str:
     """Reload the corpus index from disk. Use after editing corpus files."""
     global _repo

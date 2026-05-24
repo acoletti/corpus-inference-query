@@ -195,6 +195,45 @@ def _index_example_code(spec: CorpusSpec, base_path: Path) -> list[Section]:
     return sections
 
 
+def _index_paragraph_groups(
+    spec: CorpusSpec, text: str, source_name: str = "",
+) -> list[Section]:
+    """Index text using paragraph-group chunking for dense prose."""
+    from .chunker import chunk_paragraphs  # noqa: PLC0415
+
+    try:
+        from .settings import get_settings  # noqa: PLC0415
+        s = get_settings()
+        target = s.chunk_target_tokens
+        max_t = s.chunk_max_tokens
+        overlap = s.chunk_overlap_tokens
+    except ImportError:
+        target, max_t, overlap = 512, 1024, 64
+
+    chunks = chunk_paragraphs(text, target, max_t, overlap)
+    sections: list[Section] = []
+    for chunk in chunks:
+        p_end = chunk.paragraph_start + chunk.paragraph_count - 1
+        if source_name:
+            name = f"{source_name} (p{chunk.paragraph_start}-{p_end})"
+        else:
+            name = f"p{chunk.paragraph_start}-{p_end}"
+        citation = f"{spec.shorthand} §{name}"
+        sections.append(Section(
+            corpus_id=spec.corpus_id,
+            shorthand=spec.shorthand,
+            chapter=source_name,
+            section_name=name,
+            citation=citation,
+            content=chunk.text,
+            line_start=chunk.paragraph_start,
+            keywords=_extract_keywords(chunk.text),
+            style_tags=list(spec.style_tags),
+            type_tags=list(spec.type_tags),
+        ))
+    return sections
+
+
 def build_index(corpus_path: Path) -> list[Section]:
     """Build the full section index from all corpus files."""
     all_sections: list[Section] = []
@@ -214,7 +253,15 @@ def build_index(corpus_path: Path) -> list[Section]:
                 if dir_path.exists():
                     for md_file in sorted(dir_path.rglob("*.md")):
                         text = md_file.read_text(errors="replace")
-                        all_sections.extend(_index_markdown_sections(spec, text))
+                        if spec.chunking_strategy == "paragraph_group":
+                            name = md_file.stem
+                            all_sections.extend(
+                                _index_paragraph_groups(spec, text, name),
+                            )
+                        else:
+                            all_sections.extend(
+                                _index_markdown_sections(spec, text),
+                            )
             continue
 
         file_path = corpus_path / spec.relative_path

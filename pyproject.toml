@@ -9,6 +9,8 @@ dependencies = ["mcp>=1.0,<2.0"]
 [project.optional-dependencies]
 dev = ["build==1.5.0", "pytest==8.4.2"]
 vector = ["lancedb>=0.3,<1.0", "fastembed>=0.2,<0.4"]
+inference = ["openai>=1.0,<2.0", "pydantic-settings>=2.0,<3.0"]
+all = ["lancedb>=0.3,<1.0", "fastembed>=0.2,<0.4", "openai>=1.0,<2.0", "pydantic-settings>=2.0,<3.0"]
 
 [project.scripts]
 corpus-inference-query = "corpus_inference_query.server:main"

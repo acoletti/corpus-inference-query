@@ -76,13 +76,18 @@ def _build_and_cache_table(cache: Path, fingerprint: str, embed_sections: list[S
     embeddings = list(model.embed(texts))
 
     data = [
-        {"citation": s.citation, "line_start": s.line_start, "vector": emb.tolist()}
+        {"citation": s.citation, "line_start": s.line_start, "vector": emb.tolist(),
+         "content": s.content[:1000]}
         for s, emb in zip(embed_sections, embeddings)
     ]
 
     cache.mkdir(parents=True, exist_ok=True)
     db = lancedb.connect(str(cache))
     table = db.create_table("corpus", data, mode="overwrite")
+    try:
+        table.create_fts_index("content", replace=True)
+    except Exception:  # noqa: BLE001
+        pass  # FTS unavailable in this lancedb version
     fp_file = cache.parent / "fingerprint.txt"
     fp_file.write_text(fingerprint)
     return table
@@ -123,5 +128,30 @@ def vector_search(
     query_vec = next(iter(model.embed([query]))).tolist()
     rows = table.search(query_vec).limit(top_k).to_list()
 
+    by_citation = {s.citation: s for s in sections}
+    return [by_citation[row["citation"]] for row in rows if row["citation"] in by_citation]
+
+
+def hybrid_search(
+    table,
+    sections: list[Section],
+    query: str,
+    top_k: int,
+) -> list[Section]:
+    """Hybrid vector + BM25 search with RRF reranking.
+
+    Falls back to pure vector search if FTS index is missing or unsupported.
+    """
+    try:
+        from lancedb.rerankers import RRFReranker  # noqa: PLC0415
+
+        rows = (
+            table.search(query, query_type="hybrid")
+            .rerank(reranker=RRFReranker())
+            .limit(top_k)
+            .to_list()
+        )
+    except Exception:  # noqa: BLE001
+        return vector_search(table, sections, query, top_k)
     by_citation = {s.citation: s for s in sections}
     return [by_citation[row["citation"]] for row in rows if row["citation"] in by_citation]
