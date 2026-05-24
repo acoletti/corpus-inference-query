@@ -1,0 +1,9 @@
+# The Collective Unconscious
+
+In addition to our immediate consciousness, which is of a thoroughly personal nature, there exists a second psychic system of a collective, universal, and impersonal nature which is identical in all individuals. This collective unconscious does not develop individually but is inherited. It consists of pre-existent forms, the archetypes, which can only become conscious secondarily and which give definite form to certain psychic contents.
+
+The collective unconscious is not to be thought of as a self-subsistent entity; it is no more than a potentiality handed down to us from primordial times in the specific form of mnemonic images or inherited in the anatomical structure of the brain. There are no inborn ideas, but there are inborn possibilities of ideas that set bounds to even the boldest fantasy and keep our fantasy activity within certain categories: a priori ideas, as it were, the existence of which cannot be ascertained except from their effects.
+
+The contents of the collective unconscious are known as archetypes. The concept of the archetype indicates the existence of definite forms in the psyche which seem to be present always and everywhere. Mythological research calls them motifs; in the psychology of primitives they correspond to Levy-Bruhl's concept of representations collectives, and in the field of comparative religion they have been defined by Hubert and Mauss as categories of the imagination.
+
+The psychic inheritance consists of the possibility of psychic functioning in general — namely, in the inherited brain structure. To the inherited brain structure correspond the inherited instincts, and the collective contents associated with them constitute the collective unconscious. The universal similarity of human brains leads to the universal possibility of a uniform mental functioning, which is called the collective psyche.

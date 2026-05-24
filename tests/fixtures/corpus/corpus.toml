@@ -17,3 +17,14 @@ author = "Strunk and White"
 year = 1959
 default_style = []
 default_type = ["essay"]
+
+[[source]]
+shorthand = "Jung-PU"
+id = "jung-psychology-unconscious"
+path = "references/jung-psychology-unconscious/"
+title = "Psychology of the Unconscious"
+author = "Carl Jung"
+year = 1916
+default_style = ["analytical"]
+default_type = ["psychology", "essay"]
+chunking_strategy = "paragraph_group"

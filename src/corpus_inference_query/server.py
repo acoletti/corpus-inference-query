@@ -181,12 +181,13 @@ def analyze_with_concept(text: str, concept: str, max_tokens: int = 1500) -> str
 
 
 @mcp.tool()
-def concept_connections(concept_a: str, concept_b: str, top_k: int = 3, max_tokens: int = 1500) -> str:
+def concept_connections(concept_a: str, concept_b: str, corpus: str | None = None, top_k: int = 3, max_tokens: int = 1500) -> str:
     """Find passages that discuss two Jungian concepts together.
 
     Args:
         concept_a: First concept (e.g. "shadow").
         concept_b: Second concept (e.g. "individuation").
+        corpus: Corpus shorthand to restrict to.
         top_k: Number of results. Default 3, max 20.
         max_tokens: Target response size. Default 1500, max 4000.
     """
@@ -197,7 +198,7 @@ def concept_connections(concept_a: str, concept_b: str, top_k: int = 3, max_toke
     q_a = concept_search_query(concept_a)
     q_b = concept_search_query(concept_b)
     combined = f"{q_a} {q_b}"
-    return _get_repo().search(combined, top_k=top_k, max_chars=max_tokens * _CHARS_PER_TOKEN)
+    return _get_repo().search(combined, top_k=top_k, corpus=corpus, max_chars=max_tokens * _CHARS_PER_TOKEN)
 
 
 @mcp.tool()

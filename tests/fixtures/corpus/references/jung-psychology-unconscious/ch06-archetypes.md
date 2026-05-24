@@ -1,0 +1,9 @@
+# The Archetypes
+
+The archetype is essentially an unconscious content that is altered by becoming conscious and by being perceived, and it takes its colour from the individual consciousness in which it happens to appear. The term archetype is not meant to denote an inherited idea, but rather an inherited mode of functioning, corresponding to the inborn way in which the chick emerges from the egg, the bird builds its nest, and the wasp stings the caterpillar in the motor ganglion.
+
+The mother archetype, like any other, appears under an almost infinite variety of aspects: the mother, the grandmother, the stepmother, the mother-in-law, the nurse, the governess; any woman with whom a relationship exists. Then there are the figurative meanings: the Church, the university, the city, the country, heaven, the earth, the woods, the sea. The hero archetype manifests in myth and legend as the dragon-slayer, the rescuer, the founder of cities, the conqueror of death.
+
+The trickster is a collective shadow figure, a summation of all the inferior traits of character in individuals. The wise old man appears in dreams as a king, hero, medicine man, saviour, saint, magician, or ruler of men and spirits. These are not arbitrary inventions but are the spontaneous products of the psyche, appearing in myths and fairy tales all over the world.
+
+What we properly call instincts are physiological urges, and are perceived by the senses. But at the same time, they also manifest themselves in fantasies and often reveal their presence only by symbolic images. These manifestations are what I call the archetypes. They are forms without content, representing merely the possibility of a certain type of perception and action. When a situation occurs which corresponds to a given archetype, that archetype becomes activated.

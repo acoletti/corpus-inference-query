@@ -18,11 +18,11 @@ def repo() -> CorpusRepository:
 
 
 class TestListCorpora:
-    def test_returns_two_corpora(self, repo: CorpusRepository) -> None:
+    def test_returns_all_corpora(self, repo: CorpusRepository) -> None:
         summaries = repo.list_corpora()
-        assert len(summaries) == 2
+        assert len(summaries) == 3
         shorthands = {s.shorthand for s in summaries}
-        assert shorthands == {"HTWS", "Strunk"}
+        assert shorthands == {"HTWS", "Strunk", "Jung-PU"}
 
     def test_htws_metadata(self, repo: CorpusRepository) -> None:
         htws = next(s for s in repo.list_corpora() if s.shorthand == "HTWS")
@@ -112,7 +112,7 @@ class TestReload:
     def test_reload_returns_result(self, repo: CorpusRepository) -> None:
         result = repo.reload()
         assert result.status == "ok"
-        assert result.corpora_count == 2
+        assert result.corpora_count == 3
         assert result.doc_count >= 2
 
     def test_reload_clears_cache(self, repo: CorpusRepository) -> None:

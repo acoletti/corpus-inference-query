@@ -1,0 +1,9 @@
+# The Persona
+
+The persona is a complicated system of relations between individual consciousness and society, fittingly enough a kind of mask, designed on the one hand to make a definite impression upon others, and on the other to conceal the true nature of the individual. Society expects, and indeed must expect, every individual to play the part assigned to him as perfectly as possible, so that a man who is a parson must not only carry out his official functions objectively, but must at all times and in all circumstances play the role of parson in a flawless manner.
+
+One could say, with a little exaggeration, that the persona is that which in reality one is not, but which oneself as well as others think one is. In any case the temptation to be what one appears to be is great, because the persona is usually rewarded in hard cash. The construction of a collectively suitable persona means a formidable concession to the external world, a genuine self-sacrifice which drives the ego straight into identification with the persona, so that people really do exist who believe they are what they pretend to be.
+
+The danger of identification with the persona lies precisely in its success. When a man adapts too completely to his social role, he loses touch with his inner life. The dissolution of the persona is therefore an indispensable condition for individuation. What lies behind the mask of outer personality is not mere emptiness but the undiscovered self — the rich inner world of archetypal images, personal history, and unlived potential.
+
+The persona is a functional complex that comes into existence for reasons of adaptation or personal convenience, but is by no means identical with the individuality. The persona is exclusively concerned with the relation to objects, with the outer attitude. The inner attitude, the face turned towards the unconscious, is the anima.

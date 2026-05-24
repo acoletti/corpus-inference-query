@@ -311,9 +311,9 @@ def test_load_corpus_specs_reads_fixture() -> None:
     fixture_toml = Path(__file__).parent / "fixtures" / "corpus" / "corpus.toml"
     specs = load_corpus_specs(fixture_toml)
 
-    assert len(specs) == 2
+    assert len(specs) == 3
     shorthands = {s.shorthand for s in specs}
-    assert shorthands == {"HTWS", "Strunk"}
+    assert shorthands == {"HTWS", "Strunk", "Jung-PU"}
 
     htws = next(s for s in specs if s.shorthand == "HTWS")
     assert htws.title == "How to Write a Sentence"

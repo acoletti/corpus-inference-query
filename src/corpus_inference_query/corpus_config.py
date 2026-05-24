@@ -53,6 +53,20 @@ CORPUS_SPECS: list[CorpusSpec] = [
         author="Strunk and White",
         year=1959,
     ),
+    CorpusSpec(
+        corpus_id="jung-psychology-unconscious",
+        shorthand="Jung-PU",
+        relative_path="references/jung-psychology-unconscious/",
+        section_pattern=re.compile(r"^# (.+)$"),
+        description="Psychology of the Unconscious — Carl Jung",
+        is_directory=True,
+        style_tags=["analytical"],
+        type_tags=["psychology", "essay"],
+        title="Psychology of the Unconscious",
+        author="Carl Jung",
+        year=1916,
+        chunking_strategy="paragraph_group",
+    ),
 ]
 
 

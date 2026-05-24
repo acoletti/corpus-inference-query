@@ -1,0 +1,9 @@
+# The Shadow
+
+The shadow is a moral problem that challenges the whole ego-personality, for no one can become conscious of the shadow without considerable moral effort. To become conscious of it involves recognizing the dark aspects of the personality as present and real. This act is the essential condition for any kind of self-knowledge, and it therefore, as a rule, meets with considerable resistance.
+
+Everyone carries a shadow, and the less it is embodied in the individual's conscious life, the blacker and denser it is. If an inferiority is conscious, one always has a chance to correct it. But if it is repressed and isolated from consciousness, it never gets corrected. It is, moreover, liable to burst forth suddenly in a moment of unawareness. At all counts, it forms an unconscious snag, thwarting our most well-meant intentions.
+
+The shadow personifies everything that the subject refuses to acknowledge about himself and yet is always thrusting itself upon him directly or indirectly — for instance, inferior traits of character and other incompatible tendencies. One does not become enlightened by imagining figures of light, but by making the darkness conscious. The latter procedure, however, is disagreeable and therefore not popular.
+
+Projection changes the world into the replica of one's own unknown face. In the last analysis, the shadow is that hidden, repressed, for the most part inferior and guilt-laden personality whose ultimate ramifications reach back into the realm of our animal ancestors. If it has been believed hitherto that the human shadow was the source of all evil, it can now be ascertained on closer investigation that the unconscious man, that is his shadow, does not consist only of morally reprehensible tendencies, but also displays a number of good qualities, such as normal instincts, appropriate reactions, realistic insights, and creative impulses.
