@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
-
 # Patch corpus path before importing so the module doesn't fail at import time
 # when the real corpus directory is absent in CI / fresh checkouts.
 import os
+from unittest.mock import MagicMock, patch
+
 os.environ.setdefault(
     "CORPUS_INFERENCE_PATH",
     os.path.join(os.path.dirname(__file__), "fixtures", "corpus"),
@@ -17,6 +15,7 @@ os.environ.setdefault(
 # Reset _repo so the fixture path set above is picked up even if other tests
 # have already imported and initialised it.
 import corpus_inference_query.server as _srv_mod
+
 _srv_mod._repo = None
 
 from corpus_inference_query.server import (
@@ -34,7 +33,6 @@ from corpus_inference_query.server import (
     suggest_opening,
     suggest_rewrite,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,12 +60,10 @@ def _make_mock_repo(**overrides):
     mock.list_corpora.return_value = []
     mock.lookup_citation.return_value = "citation result"
     mock.find_exemplars.return_value = "exemplars result"
-    mock.check_against_standards.return_value = {
-        "status": "not_yet_implemented",
-        "text_length": 9,
-        "types_provided": [],
-        "skipped_rules": ["all"],
-    }
+    from corpus_inference_query.detectors.types import StandardsCheckResult
+    mock.check_against_standards.return_value = StandardsCheckResult(
+        violations=[], skipped_rules=[]
+    )
     mock.find_similar_voice.return_value = "voice result"
     mock.suggest_opening.return_value = "opening result"
     mock.suggest_rewrite.return_value = "rewrite result"
@@ -116,10 +112,10 @@ class TestIntegration:
         result = find_exemplars(style=["subordinating"])
         assert isinstance(result, str)
 
-    def test_check_against_standards_contains_not_yet_implemented(self):
+    def test_check_against_standards_returns_string(self):
         result = check_against_standards("Some text")
         assert isinstance(result, str)
-        assert "not yet implemented" in result
+        assert len(result) > 0
 
     def test_find_similar_voice_returns_string(self):
         result = find_similar_voice("Some text", corpus="HTWS")
@@ -296,18 +292,19 @@ class TestFindExemplars:
 # ---------------------------------------------------------------------------
 
 class TestCheckAgainstStandards:
-    def test_returns_not_yet_implemented_message(self):
+    def test_returns_no_violations_message(self):
         mock_repo = _make_mock_repo()
         with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
             result = check_against_standards("Some text")
-        assert "not yet implemented" in result
+        assert result == "No standards violations detected."
 
     def test_passes_text_and_types(self):
+        from corpus_inference_query.detectors.types import StandardsCheckResult
         captured = {}
         mock_repo = _make_mock_repo()
         mock_repo.check_against_standards.side_effect = (
             lambda text, types=None: captured.update({"text": text, "types": types})
-            or {"status": "not_yet_implemented", "text_length": 0, "types_provided": [], "skipped_rules": []}
+            or StandardsCheckResult(violations=[], skipped_rules=[])
         )
         with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
             check_against_standards("hello", types=["essay"])

@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from corpus_inference_query.corpus_repository import CorpusSummary, ReloadResult
+from corpus_inference_query.detectors.types import (
+    RuleViolation,
+    SkippedRule,
+    StandardsCheckResult,
+)
 from corpus_inference_query.tool_responses import (
-    format_check_stub,
+    format_check_against_standards,
     format_list_corpora,
     format_reload,
 )
@@ -82,35 +87,53 @@ class TestFormatReload:
         assert format_reload(result) == "Reloaded 0 sections from 0 corpora."
 
 
-class TestFormatCheckStub:
-    def test_with_types(self) -> None:
-        result = {
-            "status": "not_yet_implemented",
-            "text_length": 150,
-            "types_provided": ["essay", "guide"],
-            "skipped_rules": ["all — detectors ship in M3"],
-        }
-        formatted = format_check_stub(result)
-        assert "Standards check: not yet implemented (M3)." in formatted
-        assert "Text length: 150 characters." in formatted
-        assert "Configured types: essay, guide." in formatted
+class TestFormatCheckAgainstStandards:
+    def test_no_violations_no_skips(self) -> None:
+        result = StandardsCheckResult(violations=[], skipped_rules=[])
+        assert format_check_against_standards(result) == "No standards violations detected."
 
-    def test_without_types(self) -> None:
-        result = {
-            "status": "not_yet_implemented",
-            "text_length": 500,
-            "types_provided": [],
-            "skipped_rules": [],
-        }
-        formatted = format_check_stub(result)
-        assert "Text length: 500 characters." in formatted
-        assert "Configured types: none." in formatted
+    def test_violations_render_as_table(self) -> None:
+        result = StandardsCheckResult(
+            violations=[
+                RuleViolation(
+                    rule_id="§3",
+                    rule_title="Concision",
+                    severity="warning",
+                    span=(0, 10),
+                    snippet="each and every",
+                    exemplar_citation="Strunk §Omit Needless Words",
+                    suggested_rewrite_from_exemplar="Vigorous writing is concise.",
+                ),
+            ],
+            skipped_rules=[],
+        )
+        formatted = format_check_against_standards(result)
+        assert "| Rule | Title | Severity | Snippet | Exemplar |" in formatted
+        assert "| §3 | Concision | warning | each and every | Strunk §Omit Needless Words |" in formatted
 
-    def test_large_text(self) -> None:
-        result = {
-            "status": "not_yet_implemented",
-            "text_length": 50000,
-            "types_provided": ["novel"],
-            "skipped_rules": ["all"],
-        }
-        assert "Text length: 50000 characters." in format_check_stub(result)
+    def test_skipped_rules_render(self) -> None:
+        result = StandardsCheckResult(
+            violations=[],
+            skipped_rules=[SkippedRule(rule_id="§13", reason_code="personal_corpus_empty")],
+        )
+        formatted = format_check_against_standards(result)
+        assert "**Skipped rules**: §13 (personal_corpus_empty)." in formatted
+
+    def test_violations_and_skips_both_render(self) -> None:
+        result = StandardsCheckResult(
+            violations=[
+                RuleViolation(
+                    rule_id="§1",
+                    rule_title="Clarity",
+                    severity="warning",
+                    span=None,
+                    snippet="a very long sentence",
+                    exemplar_citation=None,
+                    suggested_rewrite_from_exemplar=None,
+                ),
+            ],
+            skipped_rules=[SkippedRule(rule_id="§7", reason_code="type_unknown")],
+        )
+        formatted = format_check_against_standards(result)
+        assert "§1" in formatted
+        assert "**Skipped rules**: §7 (type_unknown)." in formatted

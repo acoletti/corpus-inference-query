@@ -1,5 +1,6 @@
 """MCP stdio server for writing corpus queries."""
 from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
@@ -7,7 +8,11 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from .corpus_repository import CorpusRepository
-from .tool_responses import format_check_stub, format_list_corpora, format_reload
+from .tool_responses import (
+    format_check_against_standards,
+    format_list_corpora,
+    format_reload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,13 +88,13 @@ def find_exemplars(style: list[str] | None = None, type_filter: list[str] | None
 
 @mcp.tool()
 def check_against_standards(text: str, types: list[str] | None = None) -> str:
-    """Check writing against standards (M2 stub — full detectors in M3).
+    """Check writing against the mechanical writing-standards rules.
 
     Args:
         text: Writing to check.
-        types: Writing type context (e.g. ["essay"]).
+        types: Writing type context (e.g. ["essay"]). Inferred from text shape if omitted.
     """
-    return format_check_stub(_get_repo().check_against_standards(text, types))
+    return format_check_against_standards(_get_repo().check_against_standards(text, types))
 
 
 @mcp.tool()

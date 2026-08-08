@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from .corpus_repository import CorpusSummary, ReloadResult
+from .detectors import StandardsCheckResult
 
 
 def format_list_corpora(summaries: list[CorpusSummary]) -> str:
@@ -32,11 +31,24 @@ def format_reload(result: ReloadResult) -> str:
     return f"Reloaded {result.doc_count} sections from {result.corpora_count} corpora."
 
 
-def format_check_stub(result: dict[str, Any]) -> str:
-    """Format standards check stub result."""
-    types_str = ", ".join(result.get("types_provided", [])) or "none"
-    return (
-        f"Standards check: not yet implemented (M3).\n"
-        f"Text length: {result['text_length']} characters.\n"
-        f"Configured types: {types_str}."
-    )
+def format_check_against_standards(result: StandardsCheckResult) -> str:
+    """Format standards check result as a markdown violations table."""
+    if not result.violations and not result.skipped_rules:
+        return "No standards violations detected."
+
+    lines: list[str] = []
+    if result.violations:
+        lines.append("| Rule | Title | Severity | Snippet | Exemplar |")
+        lines.append("|------|-------|----------|---------|----------|")
+        for v in result.violations:
+            snippet = v.snippet.replace("\n", " ").replace("|", "\\|")
+            exemplar = v.exemplar_citation or "none"
+            lines.append(f"| {v.rule_id} | {v.rule_title} | {v.severity} | {snippet} | {exemplar} |")
+    else:
+        lines.append("No violations detected.")
+
+    if result.skipped_rules:
+        skipped_str = ", ".join(f"{s.rule_id} ({s.reason_code})" for s in result.skipped_rules)
+        lines.append(f"\n**Skipped rules**: {skipped_str}.")
+
+    return "\n".join(lines)

@@ -125,3 +125,18 @@ def vector_search(
 
     by_citation = {s.citation: s for s in sections}
     return [by_citation[row["citation"]] for row in rows if row["citation"] in by_citation]
+
+
+def best_similarity(table, query: str) -> float | None:
+    """Approximate top-1 cosine similarity (1 - distance) for query against table.
+
+    Returns None if the table has no rows. lancedb's default index distance
+    isn't guaranteed to be cosine, so this is a conservative approximation —
+    good enough for the §13 voice-fidelity threshold check, not exact.
+    """
+    model = _get_embed_model()
+    query_vec = next(iter(model.embed([query]))).tolist()
+    rows = table.search(query_vec).limit(1).to_list()
+    if not rows or "_distance" not in rows[0]:
+        return None
+    return max(0.0, 1.0 - float(rows[0]["_distance"]))

@@ -8,7 +8,6 @@ import pytest
 
 from corpus_inference_query.corpus_repository import CorpusRepository
 
-
 _FIXTURE_CORPUS = Path(__file__).parent / "fixtures" / "corpus"
 
 
@@ -97,14 +96,16 @@ class TestSuggestRewrite:
 
 
 class TestCheckAgainstStandards:
-    def test_returns_stub_dict(self, repo: CorpusRepository) -> None:
+    def test_returns_standards_check_result(self, repo: CorpusRepository) -> None:
         result = repo.check_against_standards("Some text.")
-        assert result["status"] == "not_yet_implemented"
-        assert "skipped_rules" in result
+        assert isinstance(result.violations, list)
+        assert isinstance(result.skipped_rules, list)
 
-    def test_captures_text_length(self, repo: CorpusRepository) -> None:
-        result = repo.check_against_standards("Hello.")
-        assert result["text_length"] == len("Hello.")
+    def test_detects_a_violation(self, repo: CorpusRepository) -> None:
+        result = repo.check_against_standards(
+            "Each and every one of us must consider the past history of this endeavor."
+        )
+        assert any(v.rule_id == "§3" for v in result.violations)
 
 
 class TestReload:

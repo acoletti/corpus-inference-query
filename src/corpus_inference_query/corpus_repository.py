@@ -2,30 +2,27 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from .corpus_config import load_corpus_specs
+from .detectors import StandardsCheckResult, run_checks
 from .indexer import Section, build_index
 from .search import (
-    _format_result,
     _format_results,
     _parse_citation,
     _score_section,
     _tokenize_query,
+)
+from .search import (
     search as _search_corpus,
 )
 from .tag_filter import filter_sections
-from .vector_store import build_vector_store, vector_search
-
+from .text_utils import split_sentences
+from .vector_store import best_similarity, build_vector_store, vector_search
 
 # Sentinel distinguishing "not yet tried" (None) from "unavailable" after failure.
 _VECTOR_STORE_UNAVAILABLE = object()
-
-# First-sentence regex: split on sentence-ending punctuation followed by a capital.
-_FIRST_SENTENCE_RE = re.compile(r'(?<=[.!?])\s+(?=[A-Z])')
 
 
 @dataclass
@@ -236,7 +233,8 @@ class CorpusRepository:
         candidates = sections[:top_k * 3]  # over-fetch for first-sentence extraction
         openings = []
         for s in candidates:
-            first = _FIRST_SENTENCE_RE.split(s.content.strip(), maxsplit=1)[0].strip()
+            sentences = split_sentences(s.content)
+            first = sentences[0] if sentences else ""
             if first and len(first) > 10:
                 openings.append(Section(
                     corpus_id=s.corpus_id,
@@ -285,14 +283,39 @@ class CorpusRepository:
 
     def check_against_standards(
         self, text: str, types: list[str] | None = None
-    ) -> dict[str, Any]:
-        """M2 stub — detectors implemented in M3."""
-        return {
-            "status": "not_yet_implemented",
-            "text_length": len(text),
-            "types_provided": types or [],
-            "skipped_rules": ["all — detectors ship in M3"],
-        }
+    ) -> StandardsCheckResult:
+        """Run mechanical writing-standards detectors against text."""
+        return run_checks(text, types, self)
+
+    def has_corpus_sections(self, corpus: str) -> bool:
+        """True if any indexed section matches the given corpus shorthand."""
+        return bool(filter_sections(self._get_index(), corpus=corpus))
+
+    def voice_similarity_score(self, text: str, corpus: str = "personal") -> float | None:
+        """Best approximate cosine similarity of text to corpus's vector index.
+
+        Returns None if the corpus is empty or the vector backend is unavailable.
+        """
+        pool = filter_sections(self._get_index(), corpus=corpus)
+        if not pool:
+            return None
+        table = self._get_vector_store()
+        if table is None:
+            return None
+        try:
+            return best_similarity(table, text)
+        except Exception:
+            return None
+
+    def find_exemplar_section(
+        self,
+        style: list[str] | None = None,
+        type_filter: list[str] | None = None,
+        corpus: str | None = None,
+    ) -> Section | None:
+        """Raw single-section lookup for detector exemplar resolution."""
+        sections = filter_sections(self._get_index(), style, type_filter, corpus)
+        return sections[0] if sections else None
 
 
 def _filter_by_length(sections: list[Section], length: str) -> list[Section]:

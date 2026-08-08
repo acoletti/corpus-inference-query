@@ -8,7 +8,8 @@
 - A lightweight local indexer over a writing-corpus directory
 - Citation lookup for shorthands like `HTWS §Subordinating`
 - Natural-language search across configured corpora
-- (Coming in later milestones: standards-violation detection, exemplar retrieval, drafting aids)
+- Mechanical standards-violation detection (`check_against_standards`) against `standards/writing-standards.md`
+- Exemplar retrieval and drafting aids (`find_exemplars`, `find_similar_voice`, `suggest_opening`, `suggest_rewrite`)
 
 ## Repository Layout
 
@@ -20,7 +21,7 @@ src/corpus_inference_query/
   search.py          citation parsing and search formatting
   vector_store.py    optional vector search backend (requires [vector] extras)
 standards/
-  writing-standards.md   (authored in milestone M3)
+  writing-standards.md   §1-§15 universal rules, §A-§J type addenda, Annex X (M3)
 scripts/
   install_local.sh   create a local venv and install the package
   build_dist.sh      build wheel and sdist artifacts
@@ -87,7 +88,7 @@ Embeds the corpus on first NL query (~5–10s) and caches the index at `~/.cache
 | `HTWS §Subordinating` | Fish, Subordinating chapter (fixture stub) |
 | `Strunk §Omit Needless Words` | Strunk and White (fixture stub) |
 
-Richer tooling (style/type filters, standards violations, exemplar retrieval, drafting aids) arrives in milestones M2–M6.
+Standards checking, exemplar retrieval, and drafting aids (M2-M3) are documented in `standards/writing-standards.md`. Gutenberg-seeded real corpora and the `/writing` skill arrive in milestones M4-M6.
 
 ## Run Tests
 
