@@ -1,8 +1,10 @@
 """MCP stdio server for writing corpus queries."""
 from __future__ import annotations
 
+import json
 import logging
 import os
+import sys
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -16,8 +18,31 @@ from .tool_responses import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_CORPUS_PATH = os.path.expanduser("~/Documents/writing-corpus")
-CORPUS_PATH = Path(os.path.expanduser(os.environ.get("CORPUS_INFERENCE_PATH", _DEFAULT_CORPUS_PATH)))
+_DEFAULT_CORPUS_PATH = "~/Documents/writing-corpus"
+_CONFIG_DIR = Path.home() / ".config" / "corpus-inference-query"
+_CONFIG_PATH = _CONFIG_DIR / "config.json"
+
+
+def _load_config() -> dict:
+    """Load the persisted JSON config, returning {} if absent or malformed."""
+    try:
+        return json.loads(_CONFIG_PATH.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _resolve_corpus_path() -> Path:
+    """Resolve the corpus path: env var > config file > default fallback."""
+    env = os.environ.get("CORPUS_INFERENCE_PATH")
+    if env:
+        return Path(os.path.expanduser(env))
+    configured = _load_config().get("corpus_path")
+    if configured:
+        return Path(os.path.expanduser(configured))
+    return Path(os.path.expanduser(_DEFAULT_CORPUS_PATH))
+
+
+CORPUS_PATH = _resolve_corpus_path()
 
 mcp = FastMCP("corpus-inference-query")
 
@@ -31,6 +56,13 @@ _repo: CorpusRepository | None = None
 def _get_repo() -> CorpusRepository:
     global _repo
     if _repo is None:
+        if not CORPUS_PATH.is_dir():
+            raise RuntimeError(
+                f"Corpus path does not exist or is not a directory: {CORPUS_PATH}\n"
+                "Fix it by either:\n"
+                "  1. Running `corpus-inference-query init` to configure the corpus path, or\n"
+                "  2. Setting the CORPUS_INFERENCE_PATH environment variable."
+            )
         _repo = CorpusRepository(CORPUS_PATH)
     return _repo
 
@@ -55,7 +87,12 @@ def query(query: str, max_tokens: int = 1500, top_k: int = 3, style: list[str] |
 @mcp.tool()
 def list_corpora() -> str:
     """List all available corpora with metadata, style/type tags, and section counts."""
-    return format_list_corpora(_get_repo().list_corpora())
+    repo = _get_repo()
+    return format_list_corpora(
+        repo.list_corpora(),
+        corpus_path=str(CORPUS_PATH),
+        vector_index_status=repo.vector_index_status(),
+    )
 
 
 @mcp.tool()
@@ -152,7 +189,44 @@ def reload() -> str:
     return format_reload(result)
 
 
+def _persist_corpus_path(corpus_dir: Path) -> None:
+    config = _load_config()
+    config["corpus_path"] = str(corpus_dir)
+    _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    _CONFIG_PATH.write_text(json.dumps(config, indent=2) + "\n")
+    print(f"Saved corpus_path={corpus_dir} to {_CONFIG_PATH}")
+
+
+def _run_ingest(argv: list[str]) -> int:
+    """Ingest a corpus directory and persist it as the active corpus path."""
+    from .ingest import main as ingest_main
+
+    rc = ingest_main(argv)
+    if rc == 0 and "--dry-run" not in argv and argv and not argv[0].startswith("-"):
+        _persist_corpus_path(Path(os.path.expanduser(argv[0])).resolve())
+    return rc
+
+
+def _run_init() -> int:
+    """Interactively configure the corpus path, then ingest it."""
+    print(f"Current corpus path: {CORPUS_PATH}")
+    raw = input("Absolute path to your writing corpus: ").strip()
+    if not raw:
+        print("No path entered; nothing changed.", file=sys.stderr)
+        return 1
+
+    corpus_dir = Path(os.path.expanduser(raw))
+    if not corpus_dir.is_dir():
+        print(f"Error: {corpus_dir} does not exist or is not a directory.", file=sys.stderr)
+        return 1
+    return _run_ingest([str(corpus_dir)])
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
+        sys.exit(_run_init())
+    if len(sys.argv) > 1 and sys.argv[1] == "ingest":
+        sys.exit(_run_ingest(sys.argv[2:]))
     try:
         _get_repo()._get_vector_store()
     except Exception:

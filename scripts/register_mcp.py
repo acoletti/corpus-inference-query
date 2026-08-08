@@ -2,8 +2,8 @@
 """Register the corpus-inference-query MCP server with Claude Desktop (and optionally Claude Code).
 
 This script:
-1. Installs the package via `uv tool install` if the binary is not in PATH.
-2. Adds/updates the MCP server entry in the Claude Desktop config.
+1. Installs the package via `uv tool install` if the binary is not in PATH or a local venv.
+2. Adds/updates the MCP server entry in the Claude Desktop config (macOS/Linux).
 3. Optionally updates Claude Code settings (`~/.claude/settings.json`).
 
 Usage:
@@ -14,19 +14,34 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+_BINARY_NAME = "corpus-inference-query"
+_CLAUDE_CODE_SETTINGS = Path.home() / ".claude" / "settings.json"
 
-_CLAUDE_DESKTOP_CONFIG = Path.home() / "Library/Application Support/Claude/claude_desktop_config.json"
-_CLAUDE_CODE_SETTINGS = Path.home() / ".claude/settings.json"
+
+def _claude_desktop_config() -> Path:
+    """Return the platform-specific Claude Desktop config path."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    return Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
 
 
-def _find_binary() -> str | None:
-    """Return the absolute path to the corpus-inference-query binary, or None."""
-    for path_dir in os.environ.get("PATH", "").split(os.pathsep):
-        candidate = Path(path_dir) / "corpus-inference-query"
+def _find_binary(repo_root: Path) -> str | None:
+    """Return the absolute path to the corpus-inference-query binary, or None.
+
+    Checks PATH first (uv tool install / pipx), then the repo-local venv.
+    """
+    found = shutil.which(_BINARY_NAME)
+    if found:
+        return str(Path(found).resolve())
+    for candidate in (
+        repo_root / ".venv" / "bin" / _BINARY_NAME,
+        repo_root / ".venv" / "Scripts" / f"{_BINARY_NAME}.exe",
+    ):
         if candidate.exists():
             return str(candidate.resolve())
     return None
@@ -34,11 +49,17 @@ def _find_binary() -> str | None:
 
 def _install_via_uv(repo_root: Path) -> str:
     """Install the package with `uv tool install` and return the binary path."""
+    if shutil.which("uv") is None:
+        raise RuntimeError(
+            "uv is not installed. Install it first "
+            "(https://docs.astral.sh/uv/getting-started/installation/) "
+            "or run scripts/install_local.sh to create a local venv."
+        )
     subprocess.run(
         ["uv", "tool", "install", str(repo_root)],
         check=True,
     )
-    binary = _find_binary()
+    binary = _find_binary(repo_root)
     if binary is None:
         raise RuntimeError(
             "Installation succeeded but corpus-inference-query was not found in PATH. "
@@ -56,13 +77,21 @@ def _load_json(path: Path) -> dict:
 
 def _save_json(path: Path, data: dict) -> None:
     """Save a dict to a JSON file with pretty formatting."""
-    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n")
 
 
-def _register_claude_desktop(binary_path: str, corpus_path: str | None = None) -> None:
-    """Add the MCP server entry to the Claude Desktop config."""
-    config = _load_json(_CLAUDE_DESKTOP_CONFIG)
+def _register(config_path: Path, app_name: str, binary_path: str, corpus_path: str | None) -> bool:
+    """Add the MCP server entry to a Claude config file. Returns True on success."""
+    if not config_path.parent.is_dir():
+        print(
+            f"Skipping {app_name}: {config_path.parent} does not exist.\n"
+            f"  Install {app_name} first (which creates that directory), or create it\n"
+            f"  manually with: mkdir -p \"{config_path.parent}\"",
+            file=sys.stderr,
+        )
+        return False
+
+    config = _load_json(config_path)
     mcp_servers = config.setdefault("mcpServers", {})
 
     entry: dict = {
@@ -72,26 +101,10 @@ def _register_claude_desktop(binary_path: str, corpus_path: str | None = None) -
     if corpus_path:
         entry["env"] = {"CORPUS_INFERENCE_PATH": corpus_path}
 
-    mcp_servers["corpus-inference-query"] = entry
-    _save_json(_CLAUDE_DESKTOP_CONFIG, config)
-    print(f"Registered corpus-inference-query in {_CLAUDE_DESKTOP_CONFIG}")
-
-
-def _register_claude_code(binary_path: str, corpus_path: str | None = None) -> None:
-    """Add the MCP server entry to the Claude Code settings."""
-    config = _load_json(_CLAUDE_CODE_SETTINGS)
-    mcp_servers = config.setdefault("mcpServers", {})
-
-    entry: dict = {
-        "type": "stdio",
-        "command": binary_path,
-    }
-    if corpus_path:
-        entry["env"] = {"CORPUS_INFERENCE_PATH": corpus_path}
-
-    mcp_servers["corpus-inference-query"] = entry
-    _save_json(_CLAUDE_CODE_SETTINGS, config)
-    print(f"Registered corpus-inference-query in {_CLAUDE_CODE_SETTINGS}")
+    mcp_servers[_BINARY_NAME] = entry
+    _save_json(config_path, config)
+    print(f"Registered {_BINARY_NAME} in {config_path}")
+    return True
 
 
 def main() -> int:
@@ -99,18 +112,22 @@ def main() -> int:
     corpus_path = os.environ.get("CORPUS_INFERENCE_PATH")
     register_claude_code = "--claude-code" in sys.argv
 
-    binary = _find_binary()
+    binary = _find_binary(repo_root)
     if binary is None:
-        print("corpus-inference-query not found in PATH. Installing via uv tool install ...")
+        print("corpus-inference-query not found in PATH or local venv. Installing via uv tool install ...")
         binary = _install_via_uv(repo_root)
         print(f"Installed at {binary}")
     else:
         print(f"Found corpus-inference-query at {binary}")
 
-    _register_claude_desktop(binary, corpus_path)
+    registered = _register(_claude_desktop_config(), "Claude Desktop", binary, corpus_path)
 
     if register_claude_code:
-        _register_claude_code(binary, corpus_path)
+        registered = _register(_CLAUDE_CODE_SETTINGS, "Claude Code", binary, corpus_path) or registered
+
+    if not registered:
+        print("\nNo config file was updated.", file=sys.stderr)
+        return 1
 
     print("\nDone. Restart Claude Desktop (and Claude Code if applicable) to load the MCP server.")
     return 0

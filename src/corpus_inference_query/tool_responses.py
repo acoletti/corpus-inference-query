@@ -6,11 +6,23 @@ from .corpus_repository import CorpusSummary, ReloadResult
 from .detectors import StandardsCheckResult
 
 
-def format_list_corpora(summaries: list[CorpusSummary]) -> str:
-    """Format corpus list as markdown table with totals."""
+def format_list_corpora(
+    summaries: list[CorpusSummary],
+    corpus_path: str | None = None,
+    vector_index_status: str | None = None,
+) -> str:
+    """Format corpus list as markdown table with totals and an optional status header."""
+    header: list[str] = []
+    if corpus_path is not None:
+        header.append(f"**Active Corpus Path**: {corpus_path}")
+    if vector_index_status is not None:
+        header.append(f"**Vector Index Status**: {vector_index_status}")
+    if header:
+        header.append("")
     if not summaries:
-        return "No corpora configured."
+        return "\n".join([*header, "No corpora configured."]) if header else "No corpora configured."
     lines = [
+        *header,
         "| Shorthand | Title | Author | Style Tags | Type Tags | Sections |",
         "|-----------|-------|--------|------------|-----------|---------|",
     ]

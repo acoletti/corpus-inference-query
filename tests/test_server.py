@@ -4,8 +4,12 @@ from __future__ import annotations
 
 # Patch corpus path before importing so the module doesn't fail at import time
 # when the real corpus directory is absent in CI / fresh checkouts.
+import json
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 os.environ.setdefault(
     "CORPUS_INFERENCE_PATH",
@@ -531,3 +535,127 @@ class TestNLScoreThreshold:
         result = self._run_nl_search([good, bad], "generators yield delegation")
         assert "generators" in result.lower()
         assert "Unrelated" not in result
+
+
+# ---------------------------------------------------------------------------
+# _run_init — interactive corpus-path setup
+# ---------------------------------------------------------------------------
+
+_FIXTURE_CORPUS_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "corpus")
+
+
+class TestRunInit:
+    """_run_init() validates input, persists corpus_path, and preserves siblings."""
+
+    def test_valid_path_persists_config(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        with patch.object(_srv_mod, "_CONFIG_DIR", tmp_path), \
+             patch.object(_srv_mod, "_CONFIG_PATH", config_path), \
+             patch("builtins.input", return_value=_FIXTURE_CORPUS_PATH):
+            rc = _srv_mod._run_init()
+        assert rc == 0
+        assert config_path.exists()
+        data = json.loads(config_path.read_text())
+        assert data["corpus_path"] == str(Path(_FIXTURE_CORPUS_PATH))
+
+    def test_empty_input_returns_1(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        with patch.object(_srv_mod, "_CONFIG_DIR", tmp_path), \
+             patch.object(_srv_mod, "_CONFIG_PATH", config_path), \
+             patch("builtins.input", return_value=""):
+            rc = _srv_mod._run_init()
+        assert rc == 1
+        assert not config_path.exists()
+
+    def test_nonexistent_dir_returns_1(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        with patch.object(_srv_mod, "_CONFIG_DIR", tmp_path), \
+             patch.object(_srv_mod, "_CONFIG_PATH", config_path), \
+             patch("builtins.input", return_value=str(tmp_path / "missing")):
+            rc = _srv_mod._run_init()
+        assert rc == 1
+        assert not config_path.exists()
+
+    def test_dir_without_md_files_returns_1(self, tmp_path):
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+        config_path = tmp_path / "config.json"
+        with patch.object(_srv_mod, "_CONFIG_DIR", tmp_path), \
+             patch.object(_srv_mod, "_CONFIG_PATH", config_path), \
+             patch("builtins.input", return_value=str(empty_dir)):
+            rc = _srv_mod._run_init()
+        assert rc == 1
+        assert not config_path.exists()
+
+    def test_preserves_existing_config_keys(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"other_key": "keep", "corpus_path": "/old"}))
+        with patch.object(_srv_mod, "_CONFIG_DIR", tmp_path), \
+             patch.object(_srv_mod, "_CONFIG_PATH", config_path), \
+             patch("builtins.input", return_value=_FIXTURE_CORPUS_PATH):
+            rc = _srv_mod._run_init()
+        assert rc == 0
+        data = json.loads(config_path.read_text())
+        assert data["other_key"] == "keep"
+        assert data["corpus_path"] == str(Path(_FIXTURE_CORPUS_PATH))
+
+
+# ---------------------------------------------------------------------------
+# _resolve_corpus_path — env > config file > default
+# ---------------------------------------------------------------------------
+
+class TestResolveCorpusPath:
+    """_resolve_corpus_path() honours env var, then config file, then default."""
+
+    def test_env_var_wins(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CORPUS_INFERENCE_PATH", "/from/env")
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"corpus_path": "/from/config"}))
+        with patch.object(_srv_mod, "_CONFIG_PATH", config_path):
+            result = _srv_mod._resolve_corpus_path()
+        assert result == Path("/from/env")
+
+    def test_config_file_used_when_no_env(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("CORPUS_INFERENCE_PATH", raising=False)
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"corpus_path": "/from/config"}))
+        with patch.object(_srv_mod, "_CONFIG_PATH", config_path):
+            result = _srv_mod._resolve_corpus_path()
+        assert result == Path("/from/config")
+
+    def test_default_fallback(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("CORPUS_INFERENCE_PATH", raising=False)
+        with patch.object(_srv_mod, "_CONFIG_PATH", tmp_path / "nonexistent.json"):
+            result = _srv_mod._resolve_corpus_path()
+        assert result == Path(os.path.expanduser("~/Documents/writing-corpus"))
+
+    def test_malformed_config_falls_back(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("CORPUS_INFERENCE_PATH", raising=False)
+        config_path = tmp_path / "config.json"
+        config_path.write_text("not json")
+        with patch.object(_srv_mod, "_CONFIG_PATH", config_path):
+            assert _srv_mod._load_config() == {}
+            result = _srv_mod._resolve_corpus_path()
+        assert result == Path(os.path.expanduser("~/Documents/writing-corpus"))
+
+
+# ---------------------------------------------------------------------------
+# _get_repo — actionable error when CORPUS_PATH is missing
+# ---------------------------------------------------------------------------
+
+class TestGetRepoValidation:
+    """_get_repo() must raise an actionable RuntimeError when the corpus dir is absent."""
+
+    def test_missing_corpus_dir_raises_actionable_error(self, tmp_path):
+        missing = tmp_path / "does-not-exist"
+        original_repo = _srv_mod._repo
+        _srv_mod._repo = None
+        try:
+            with patch.object(_srv_mod, "CORPUS_PATH", missing):
+                with pytest.raises(RuntimeError) as exc_info:
+                    _srv_mod._get_repo()
+            msg = str(exc_info.value)
+            assert "corpus-inference-query init" in msg
+            assert "CORPUS_INFERENCE_PATH" in msg
+        finally:
+            _srv_mod._repo = original_repo

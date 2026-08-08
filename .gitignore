@@ -7,3 +7,5 @@ src/*.egg-info/
 *.pyo
 .pytest_cache/
 .claude/
+.env.local
+.augment/

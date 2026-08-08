@@ -72,6 +72,79 @@ class TestFormatListCorpora:
         ]
         assert "none" in format_list_corpora(summaries)
 
+    def test_header_with_path_and_status(self) -> None:
+        summaries = [
+            CorpusSummary(
+                shorthand="HTWS",
+                title="How to Write a Sentence",
+                author="Stanley Fish",
+                default_style=["subordinating"],
+                default_type=["essay"],
+                doc_count=5,
+            ),
+        ]
+        result = format_list_corpora(
+            summaries, corpus_path="/tmp/corpus", vector_index_status="Ready"
+        )
+        assert "**Active Corpus Path**: /tmp/corpus" in result
+        assert "**Vector Index Status**: Ready" in result
+        lines = result.split("\n")
+        table_idx = next(i for i, ln in enumerate(lines) if ln.startswith("| Shorthand"))
+        assert lines[table_idx - 1] == ""
+
+    def test_header_only_path(self) -> None:
+        summaries = [
+            CorpusSummary(
+                shorthand="HTWS",
+                title="How to Write a Sentence",
+                author="Stanley Fish",
+                default_style=["subordinating"],
+                default_type=["essay"],
+                doc_count=5,
+            ),
+        ]
+        result = format_list_corpora(summaries, corpus_path="/tmp/corpus")
+        assert "**Active Corpus Path**: /tmp/corpus" in result
+        assert "Vector Index Status" not in result
+
+    def test_header_only_status(self) -> None:
+        summaries = [
+            CorpusSummary(
+                shorthand="HTWS",
+                title="How to Write a Sentence",
+                author="Stanley Fish",
+                default_style=["subordinating"],
+                default_type=["essay"],
+                doc_count=5,
+            ),
+        ]
+        result = format_list_corpora(summaries, vector_index_status="Ready")
+        assert "**Vector Index Status**: Ready" in result
+        assert "Active Corpus Path" not in result
+
+    def test_no_header_backward_compatible(self) -> None:
+        summaries = [
+            CorpusSummary(
+                shorthand="HTWS",
+                title="How to Write a Sentence",
+                author="Stanley Fish",
+                default_style=["subordinating"],
+                default_type=["essay"],
+                doc_count=5,
+            ),
+        ]
+        result = format_list_corpora(summaries)
+        assert "Active Corpus Path" not in result
+        assert "Vector Index Status" not in result
+
+    def test_empty_summaries_with_header(self) -> None:
+        result = format_list_corpora(
+            [], corpus_path="/x", vector_index_status="Ready"
+        )
+        assert "**Active Corpus Path**: /x" in result
+        assert "**Vector Index Status**: Ready" in result
+        assert "No corpora configured." in result
+
 
 class TestFormatReload:
     def test_single_corpus(self) -> None:

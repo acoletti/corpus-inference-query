@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from corpus_inference_query import corpus_repository
 from corpus_inference_query.corpus_repository import CorpusRepository
 
 _FIXTURE_CORPUS = Path(__file__).parent / "fixtures" / "corpus"
@@ -120,3 +121,25 @@ class TestReload:
         _ = repo._get_index()
         result = repo.reload()
         assert result.status == "ok"
+
+
+class TestVectorIndexStatus:
+    """vector_index_status() reports state without triggering a build."""
+
+    def test_sentinel_reports_unavailable(self, repo: CorpusRepository) -> None:
+        repo._vector_store = corpus_repository._VECTOR_STORE_UNAVAILABLE
+        assert repo.vector_index_status() == "Unavailable (Missing Extras)"
+
+    def test_object_reports_ready(self, repo: CorpusRepository) -> None:
+        repo._vector_store = object()
+        assert repo.vector_index_status() == "Ready"
+
+    def test_none_reports_pending_or_unavailable(self, repo: CorpusRepository) -> None:
+        repo._vector_store = None
+        try:
+            import fastembed  # noqa: F401
+            import lancedb  # noqa: F401
+            expected = "Available (Pending First NL Query)"
+        except ImportError:
+            expected = "Unavailable (Missing Extras)"
+        assert repo.vector_index_status() == expected

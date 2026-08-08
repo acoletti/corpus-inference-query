@@ -8,6 +8,7 @@ from pathlib import Path
 from .corpus_config import load_corpus_specs
 from .detectors import StandardsCheckResult, run_checks
 from .indexer import Section, build_index
+from .ingest import discovered_specs
 from .search import (
     _format_results,
     _parse_citation,
@@ -71,6 +72,15 @@ class CorpusRepository:
             self._index = self._enrich_with_spec_tags(raw)
         return self._index
 
+    def _get_specs(self):
+        """corpus.toml specs plus specs synthesized from the ingest cache."""
+        specs = load_corpus_specs(self._corpus_path / "corpus.toml")
+        known = {s.shorthand for s in specs}
+        specs.extend(
+            s for s in discovered_specs(self._corpus_path) if s.shorthand not in known
+        )
+        return specs
+
     def _enrich_with_spec_tags(self, sections: list[Section]) -> list[Section]:
         """Propagate corpus-level style/type tags to sections that have none.
 
@@ -80,8 +90,7 @@ class CorpusRepository:
         Only sections whose own tags are empty are updated; sections with
         explicit per-section tags are left untouched.
         """
-        corpus_toml = self._corpus_path / "corpus.toml"
-        specs = load_corpus_specs(corpus_toml)
+        specs = self._get_specs()
         spec_map: dict[str, tuple[list[str], list[str]]] = {
             s.shorthand: (s.style_tags, s.type_tags) for s in specs
         }
@@ -115,6 +124,19 @@ class CorpusRepository:
             return None
         return self._vector_store
 
+    def vector_index_status(self) -> str:
+        """Human-readable status of the vector index for tool output."""
+        if self._vector_store is _VECTOR_STORE_UNAVAILABLE:
+            return "Unavailable (Missing Extras)"
+        if self._vector_store is not None:
+            return "Ready"
+        try:
+            import fastembed  # noqa: F401
+            import lancedb  # noqa: F401
+        except ImportError:
+            return "Unavailable (Missing Extras)"
+        return "Available (Pending First NL Query)"
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -122,8 +144,7 @@ class CorpusRepository:
     def list_corpora(self) -> list[CorpusSummary]:
         """Return one summary per corpus, with section counts."""
         index = self._get_index()
-        corpus_toml = self._corpus_path / "corpus.toml"
-        specs = load_corpus_specs(corpus_toml)
+        specs = self._get_specs()
 
         counts: dict[str, int] = {}
         for s in index:
@@ -273,8 +294,7 @@ class CorpusRepository:
         self._index = None
         self._vector_store = None
         index = self._get_index()
-        corpus_toml = self._corpus_path / "corpus.toml"
-        specs = load_corpus_specs(corpus_toml)
+        specs = self._get_specs()
         return ReloadResult(
             status="ok",
             corpora_count=len(specs),

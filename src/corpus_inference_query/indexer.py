@@ -6,7 +6,12 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .corpus_config import CORPUS_SPECS, SUBSECTION_BLOCKLIST, CorpusSpec, load_corpus_specs
+from .corpus_config import (
+    CORPUS_SPECS,
+    SUBSECTION_BLOCKLIST,
+    CorpusSpec,
+    load_corpus_specs,
+)
 
 
 @dataclass
@@ -196,8 +201,17 @@ def _index_example_code(spec: CorpusSpec, base_path: Path) -> list[Section]:
 
 
 def build_index(corpus_path: Path) -> list[Section]:
-    """Build the full section index from all corpus files."""
-    all_sections: list[Section] = []
+    """Build the full section index from all corpus files.
+
+    Sources, merged in order:
+    1. Ingest cache for corpus_path (from `corpus-inference-query ingest`).
+    2. corpus.toml manifest specs, falling back to the built-in CORPUS_SPECS.
+    """
+    from .ingest import load_ingested_sections
+
+    all_sections: list[Section] = list(load_ingested_sections(corpus_path))
+    if all_sections:
+        return all_sections
 
     corpus_toml = corpus_path / "corpus.toml"
     specs = load_corpus_specs(corpus_toml) if corpus_toml.exists() else CORPUS_SPECS

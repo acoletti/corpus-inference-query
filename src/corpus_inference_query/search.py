@@ -7,14 +7,12 @@ import re
 from .corpus_config import CORPUS_SPECS
 from .indexer import Section
 
-
-# Derive shorthands from the single source of truth in corpus_config
+# Built-in shorthands; ingested corpora contribute theirs at query time via
+# the sections passed to search().
 KNOWN_SHORTHANDS = {spec.shorthand for spec in CORPUS_SPECS}
 
-# Build citation regex from shorthands — longest first so "FP2e-ex" matches before "FP2e"
-_SHORTHAND_ALTERNATION = "|".join(
-    sorted((re.escape(s) for s in KNOWN_SHORTHANDS), key=len, reverse=True)
-)
+# Generic citation shape: any shorthand-like token followed by the § sigil.
+_CITATION_RE = re.compile(r"([A-Za-z][\w.-]*)\s*§\s*(.+)")
 
 # Minimum score for a section to appear in natural-language results.
 # Score = coverage × mean_bonus; a single keyword match on a 2-token query
@@ -47,9 +45,10 @@ def _parse_citation(q: str) -> tuple[str | None, str | None]:
 
     The § sigil is required to distinguish explicit citations from scoped
     natural-language queries (e.g. "CC-Py generators"). Bare shorthand-prefixed
-    queries are handled by the scope-detection path in search().
+    queries are handled by the scope-detection path in search(). Any
+    shorthand-like token is accepted so ingested corpora resolve too.
     """
-    m = re.match(rf"({_SHORTHAND_ALTERNATION})\s*§\s*(.+)", q.strip())
+    m = _CITATION_RE.match(q.strip())
     if m:
         return m.group(1), m.group(2).strip()
 
@@ -122,7 +121,8 @@ def search(
 
     # Check if query starts with a known shorthand (scoped natural language)
     first_word = query.strip().split()[0] if query.strip() else ""
-    if first_word in KNOWN_SHORTHANDS:
+    live_shorthands = KNOWN_SHORTHANDS | {s.shorthand for s in sections}
+    if first_word in live_shorthands:
         rest = query.strip()[len(first_word):].strip()
         return _search_natural_language(
             [s for s in sections if s.shorthand == first_word],
