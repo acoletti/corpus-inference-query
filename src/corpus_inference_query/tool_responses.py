@@ -125,6 +125,10 @@ def format_validate_boundary(payload: str, boundary: str, models: dict) -> str:
     scorecard = artifact if boundary == "scorecard" else getattr(artifact, "scorecard", None)
     if scorecard is not None:
         flags["over_smoothing_signature"] = scorecard.over_smoothing_signature()
+    if hasattr(artifact, "high_ai_likelihood"):
+        flags["high_ai_likelihood"] = artifact.high_ai_likelihood()
+    if hasattr(artifact, "flatline_signature"):
+        flags["flatline_signature"] = artifact.flatline_signature()
     return json.dumps({
         "status": "valid",
         "boundary": boundary,

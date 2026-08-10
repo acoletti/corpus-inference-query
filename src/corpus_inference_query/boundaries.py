@@ -9,13 +9,62 @@ Pydantic is used only where free-form LLM text is parsed into structure.
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCORECARD_DIMENSIONS = ("craft", "voice", "structure", "truth", "risk")
 
 PriorityLevel = Literal["HIGH", "MEDIUM", "LOW"]
+
+RiskLevel = Literal["clean", "low", "medium", "high"]
+
+# Deterministic AI-smell checks, ported from sendme lib/llm/writing-style.ts
+# (smellsLikeAI) via translator ingest/smell.py. Used to reject proposed
+# repairs that themselves carry banned LLM constructions.
+_NEGATE_ASSERT = re.compile(
+    r"\b(isn'?t|aren'?t|wasn'?t|weren'?t|don'?t|doesn'?t|didn'?t|won'?t)\b"
+    r"[^.!?;]{0,60}\b(it'?s|they'?re|you'?re)\b")
+_NOT_JUST = re.compile(r"\bnot (just|merely|simply|only a)\b")
+_MORE_THAN_JUST = re.compile(r"\bmore than (just|merely)\b")
+_DONT_JUST = re.compile(r"\bdon'?t just\b")
+_PIVOT = re.compile(r"[;\u2014]\s*(it'?s|you'?re|they'?re)\b")
+_KIND_FOR = re.compile(
+    r"\bthe kind (of|you)\b[^.!?]{0,40}\b(that|wired|built|made) for\b")
+_HYPE_WORDS = re.compile(
+    r"\b(delve|tapestry|testament|beacon|realm of|landscape of|"
+    r"elevat(?:e|ed|ing)|unlock(?:ed|ing)?|immersive|seamless(?:ly)?|curated|"
+    r"at its core|in a world where|journey of|"
+    r"truly|deeply|utterly|genuinely)\b")
+_TRANSITION_OPENER = re.compile(
+    r"(?:^|[.!?]\s+)(furthermore|moreover|additionally|in conclusion)\b,?",
+    re.MULTILINE)
+
+AI_SMELL_CHECKS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("negate_then_assert", _NEGATE_ASSERT),
+    ("not_just", _NOT_JUST),
+    ("more_than_just", _MORE_THAN_JUST),
+    ("dont_just", _DONT_JUST),
+    ("dramatic_pivot", _PIVOT),
+    ("kind_built_for", _KIND_FOR),
+    ("hype_filler", _HYPE_WORDS),
+    ("canned_transition", _TRANSITION_OPENER),
+)
+
+AI_SMELL_MARKERS = tuple(name for name, _ in AI_SMELL_CHECKS) + (
+    "uniform_burstiness",
+    "templated_structure",
+    "reader_characterization",
+)
+
+
+def smell_flags(text: str) -> list[str]:
+    """Names of every banned construction found in the text (empty = clean)."""
+    if not text:
+        return []
+    lowered = text.lower()
+    return [name for name, pattern in AI_SMELL_CHECKS if pattern.search(lowered)]
 
 
 class _Frozen(BaseModel):
@@ -93,8 +142,76 @@ class DebateResponse(_Frozen):
     defended_dissent: bool = False
 
 
+class AISmellFinding(_Frozen):
+    """One detected AI-signature construction with its additive repair."""
+
+    quote: str = Field(min_length=1)
+    marker: str = Field(min_length=1)
+    repair: str = Field(min_length=1)
+
+    @field_validator("marker")
+    @classmethod
+    def _marker_is_known(cls, v: str) -> str:
+        if v not in AI_SMELL_MARKERS:
+            raise ValueError(f"unknown marker '{v}'; expected one of {sorted(AI_SMELL_MARKERS)}")
+        return v
+
+    @field_validator("repair")
+    @classmethod
+    def _repair_is_clean(cls, v: str) -> str:
+        hits = smell_flags(v)
+        if hits:
+            raise ValueError(
+                f"repair itself carries banned constructions: {hits}; "
+                "state what is, never what is not")
+        return v
+
+
+class AISmellBoundary(_Frozen):
+    """AI Smell Detector review — risk verdict plus per-construction findings.
+
+    A `high` risk_level is the hard-gate signal: the orchestrator flags the
+    reviewed suggestion as High AI Likelihood and excludes it from the
+    primary recommendation roadmap.
+    """
+
+    persona: str = Field(min_length=1)
+    risk_level: RiskLevel
+    findings: list[AISmellFinding] = Field(default_factory=list)
+    burstiness_note: str = Field(min_length=1)
+    verdict: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _findings_support_risk(self) -> "AISmellBoundary":
+        if self.risk_level != "clean" and not self.findings:
+            raise ValueError("non-clean risk_level requires at least one finding")
+        if self.risk_level == "clean" and self.findings:
+            raise ValueError("clean risk_level must carry no findings")
+        return self
+
+    def high_ai_likelihood(self) -> bool:
+        return self.risk_level == "high"
+
+
+class ParataxisScorecard(_Frozen):
+    """1-5 scores on coordinate-string craft (5 = fully achieved)."""
+
+    persona: str = Field(min_length=1)
+    ligature_integrity: int = Field(ge=1, le=5)
+    string_rhythm: int = Field(ge=1, le=5)
+    unit_weight: int = Field(ge=1, le=5)
+    landing: int = Field(ge=1, le=5)
+    fake_parataxis_count: int = Field(ge=0)
+
+    def flatline_signature(self) -> bool:
+        """Rhythm and unit-weight both low — the monotone-string fingerprint."""
+        return self.string_rhythm <= 2 and self.unit_weight <= 2
+
+
 BOUNDARY_MODELS: dict[str, type[BaseModel]] = {
     "review": EditorialReview,
     "debate": DebateResponse,
     "scorecard": Scorecard,
+    "ai_smell": AISmellBoundary,
+    "parataxis_scorecard": ParataxisScorecard,
 }
