@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
+
 from .corpus_repository import CorpusSummary, ReloadResult
 from .detectors import StandardsCheckResult
 
@@ -41,6 +44,21 @@ def format_list_corpora(
 def format_reload(result: ReloadResult) -> str:
     """Format reload result as brief status message."""
     return f"Reloaded {result.doc_count} sections from {result.corpora_count} corpora."
+
+
+def format_check_against_standards_json(result: StandardsCheckResult) -> str:
+    """Format standards check result as a machine-readable JSON object.
+
+    Designed for orchestrators that store the check result as a blackboard
+    artifact and gate on violation counts programmatically.
+    """
+    payload = {
+        "status": "clean" if not result.violations else "violations",
+        "violation_count": len(result.violations),
+        "violations": [asdict(v) for v in result.violations],
+        "skipped_rules": [asdict(s) for s in result.skipped_rules],
+    }
+    return json.dumps(payload, indent=2)
 
 
 def format_check_against_standards(result: StandardsCheckResult) -> str:

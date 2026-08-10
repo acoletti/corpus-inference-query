@@ -315,6 +315,55 @@ class TestCheckAgainstStandards:
         assert captured["text"] == "hello"
         assert captured["types"] == ["essay"]
 
+    def test_json_format_returns_structured_payload(self):
+        import json as json_mod
+        mock_repo = _make_mock_repo()
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            result = check_against_standards("Some text", format="json")
+        payload = json_mod.loads(result)
+        assert payload["status"] == "clean"
+        assert payload["violation_count"] == 0
+        assert payload["violations"] == []
+        assert payload["skipped_rules"] == []
+
+    def test_json_format_serializes_violations(self):
+        import json as json_mod
+        from corpus_inference_query.detectors.types import (
+            RuleViolation,
+            StandardsCheckResult,
+        )
+        mock_repo = _make_mock_repo(
+            check_against_standards=MagicMock(
+                return_value=StandardsCheckResult(
+                    violations=[
+                        RuleViolation(
+                            rule_id="§3",
+                            rule_title="Concision",
+                            severity="warning",
+                            span=(0, 10),
+                            snippet="each and every",
+                            exemplar_citation="Strunk §Omit Needless Words",
+                            suggested_rewrite_from_exemplar=None,
+                        )
+                    ],
+                    skipped_rules=[],
+                )
+            )
+        )
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            result = check_against_standards("each and every", format="json")
+        payload = json_mod.loads(result)
+        assert payload["status"] == "violations"
+        assert payload["violation_count"] == 1
+        assert payload["violations"][0]["rule_id"] == "§3"
+        assert payload["violations"][0]["severity"] == "warning"
+
+    def test_default_format_is_markdown(self):
+        mock_repo = _make_mock_repo()
+        with patch("corpus_inference_query.server._get_repo", return_value=mock_repo):
+            result = check_against_standards("Some text")
+        assert result == "No standards violations detected."
+
 
 # ---------------------------------------------------------------------------
 # find_similar_voice

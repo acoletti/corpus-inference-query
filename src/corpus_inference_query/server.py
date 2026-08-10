@@ -12,6 +12,7 @@ from mcp.server.fastmcp import FastMCP
 from .corpus_repository import CorpusRepository
 from .tool_responses import (
     format_check_against_standards,
+    format_check_against_standards_json,
     format_list_corpora,
     format_reload,
 )
@@ -124,14 +125,21 @@ def find_exemplars(style: list[str] | None = None, type_filter: list[str] | None
 
 
 @mcp.tool()
-def check_against_standards(text: str, types: list[str] | None = None) -> str:
+def check_against_standards(text: str, types: list[str] | None = None, format: str = "markdown") -> str:
     """Check writing against the mechanical writing-standards rules.
 
     Args:
         text: Writing to check.
         types: Writing type context (e.g. ["essay"]). Inferred from text shape if omitted.
+        format: Output format: "markdown" (default, human-readable table) or
+            "json" (machine-readable object with status, violation_count,
+            violations, skipped_rules — for orchestrators storing the result
+            as a blackboard artifact).
     """
-    return format_check_against_standards(_get_repo().check_against_standards(text, types))
+    result = _get_repo().check_against_standards(text, types)
+    if format == "json":
+        return format_check_against_standards_json(result)
+    return format_check_against_standards(result)
 
 
 @mcp.tool()
