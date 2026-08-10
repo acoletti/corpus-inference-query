@@ -15,6 +15,7 @@ from .tool_responses import (
     format_check_against_standards_json,
     format_list_corpora,
     format_reload,
+    format_validate_boundary,
 )
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,26 @@ def suggest_rewrite(text: str, target_style: str, top_k: int = 5, max_tokens: in
     top_k = max(1, min(top_k, _TOP_K_CEILING))
     max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
     return _get_repo().suggest_rewrite(text, target_style, top_k=top_k, max_chars=max_tokens * _CHARS_PER_TOKEN)
+
+
+@mcp.tool()
+def validate_boundary(payload: str, boundary: str = "review") -> str:
+    """Validate an LLM-produced editorial artifact against its writing boundary.
+
+    Args:
+        payload: JSON string of the artifact (review, debate, or scorecard).
+        boundary: Which boundary model to validate against:
+            "review" (Phase 2 EditorialReview), "debate" (Phase 3
+            DebateResponse), or "scorecard" (five-dimension Scorecard).
+
+    Returns a JSON object: {"status": "valid", ...} echoing the normalized
+    artifact plus derived flags (e.g. over_smoothing_signature for
+    scorecards), or {"status": "invalid", "errors": [...]} with per-field
+    Pydantic error locations for repair-and-retry loops.
+    """
+    from .boundaries import BOUNDARY_MODELS  # noqa: PLC0415
+
+    return format_validate_boundary(payload, boundary, BOUNDARY_MODELS)
 
 
 @mcp.tool()

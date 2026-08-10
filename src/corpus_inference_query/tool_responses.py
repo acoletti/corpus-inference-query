@@ -82,3 +82,52 @@ def format_check_against_standards(result: StandardsCheckResult) -> str:
         lines.append(f"\n**Skipped rules**: {skipped_str}.")
 
     return "\n".join(lines)
+
+
+def format_validate_boundary(payload: str, boundary: str, models: dict) -> str:
+    """Validate a JSON payload against a named boundary model; return JSON verdict.
+
+    Success: {"status": "valid", "boundary": ..., "artifact": {...}, "flags": {...}}.
+    Failure: {"status": "invalid", "errors": [{loc, msg, type}, ...]} suitable
+    for an orchestrator repair-and-retry loop.
+    """
+    from pydantic import ValidationError
+
+    model = models.get(boundary)
+    if model is None:
+        return json.dumps({
+            "status": "invalid",
+            "errors": [{
+                "loc": ["boundary"],
+                "msg": f"unknown boundary '{boundary}'; expected one of {sorted(models)}",
+                "type": "value_error",
+            }],
+        }, indent=2)
+    try:
+        data = json.loads(payload)
+    except ValueError as exc:
+        return json.dumps({
+            "status": "invalid",
+            "errors": [{"loc": ["payload"], "msg": f"not valid JSON: {exc}", "type": "json_error"}],
+        }, indent=2)
+    try:
+        artifact = model.model_validate(data)
+    except ValidationError as exc:
+        return json.dumps({
+            "status": "invalid",
+            "errors": [
+                {"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]}
+                for e in exc.errors()
+            ],
+        }, indent=2)
+
+    flags: dict = {}
+    scorecard = artifact if boundary == "scorecard" else getattr(artifact, "scorecard", None)
+    if scorecard is not None:
+        flags["over_smoothing_signature"] = scorecard.over_smoothing_signature()
+    return json.dumps({
+        "status": "valid",
+        "boundary": boundary,
+        "artifact": artifact.model_dump(),
+        "flags": flags,
+    }, indent=2)
