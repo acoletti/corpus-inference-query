@@ -11,6 +11,7 @@ from corpus_inference_query.boundaries import (
     BOUNDARY_MODELS,
     AISmellBoundary,
     DebateResponse,
+    DraftManifest,
     EditorialReview,
     ParataxisScorecard,
     Scorecard,
@@ -221,6 +222,51 @@ class TestAISmellBoundary:
         data["findings"][0]["marker"] = "sounds_robotic"
         with pytest.raises(ValidationError):
             AISmellBoundary.model_validate(data)
+
+
+def _valid_draft_manifest() -> dict:
+    return {
+        "persona": "Drafter",
+        "items": [
+            {"roadmap_item": "2", "disposition": "applied",
+             "note": "Rebuilt the ending on the mirror image."},
+            {"roadmap_item": "1", "disposition": "placeholder",
+             "note": "Marriage scene is author-only."},
+        ],
+        "placeholder_count": 1,
+    }
+
+
+class TestDraftManifest:
+    def test_valid_manifest_parses(self) -> None:
+        manifest = DraftManifest.model_validate(_valid_draft_manifest())
+        assert manifest.placeholder_count == 1
+
+    def test_deferred_requires_reason(self) -> None:
+        data = _valid_draft_manifest()
+        data["items"][0]["disposition"] = "deferred"
+        data["items"][0]["note"] = "skipped"
+        with pytest.raises(ValidationError):
+            DraftManifest.model_validate(data)
+
+    def test_placeholder_items_require_count(self) -> None:
+        data = _valid_draft_manifest()
+        data["placeholder_count"] = 0
+        with pytest.raises(ValidationError):
+            DraftManifest.model_validate(data)
+
+    def test_unknown_disposition_rejected(self) -> None:
+        data = _valid_draft_manifest()
+        data["items"][0]["disposition"] = "rewritten"
+        with pytest.raises(ValidationError):
+            DraftManifest.model_validate(data)
+
+    def test_registered_in_boundary_models(self) -> None:
+        out = json.loads(format_validate_boundary(
+            json.dumps(_valid_draft_manifest()), "draft", BOUNDARY_MODELS,
+        ))
+        assert out["status"] == "valid"
+        assert out["boundary"] == "draft"
 
 
 class TestParataxisScorecard:

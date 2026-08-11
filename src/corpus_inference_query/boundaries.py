@@ -208,10 +208,48 @@ class ParataxisScorecard(_Frozen):
         return self.string_rhythm <= 2 and self.unit_weight <= 2
 
 
+DraftDisposition = Literal["applied", "placeholder", "deferred"]
+
+
+class DraftManifestItem(_Frozen):
+    """One roadmap entry's disposition in the drafted revision."""
+
+    roadmap_item: str = Field(min_length=1)
+    disposition: DraftDisposition
+    note: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _deferred_needs_reason(self) -> "DraftManifestItem":
+        if self.disposition == "deferred" and len(self.note.split()) < 3:
+            raise ValueError("a deferred item must state its reason in the note")
+        return self
+
+
+class DraftManifest(_Frozen):
+    """Phase 5 Drafter change manifest — mirrors templates/draft.md section I.
+
+    The Drafter applies only mechanical/structural edits; author-only work
+    becomes [AUTHOR: ...] placeholders counted in `placeholder_count`.
+    """
+
+    persona: str = Field(min_length=1)
+    items: list[DraftManifestItem] = Field(min_length=1)
+    placeholder_count: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _placeholders_are_accounted(self) -> "DraftManifest":
+        marked = sum(1 for i in self.items if i.disposition == "placeholder")
+        if marked > 0 and self.placeholder_count == 0:
+            raise ValueError(
+                "items marked placeholder but placeholder_count is 0")
+        return self
+
+
 BOUNDARY_MODELS: dict[str, type[BaseModel]] = {
     "review": EditorialReview,
     "debate": DebateResponse,
     "scorecard": Scorecard,
     "ai_smell": AISmellBoundary,
     "parataxis_scorecard": ParataxisScorecard,
+    "draft": DraftManifest,
 }
