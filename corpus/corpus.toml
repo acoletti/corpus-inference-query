@@ -1,0 +1,49 @@
+[[source]]
+shorthand = "Fish"
+id = "fish"
+path = "Fish"
+title = "How to Write a Sentence (general craft chapters)"
+author = "Stanley Fish"
+year = 2011
+default_style = ["subordinating", "general"]
+default_type = ["essay", "book"]
+
+[[source]]
+shorthand = "Fish-Additive"
+id = "fish-additive"
+path = "Fish-Additive"
+title = "How to Write a Sentence — The Additive Style"
+author = "Stanley Fish"
+year = 2011
+default_style = ["additive"]
+default_type = ["essay", "book"]
+
+[[source]]
+shorthand = "Woolf"
+id = "woolf"
+path = "Woolf"
+title = "The Waves (opening interludes and episodes)"
+author = "Virginia Woolf"
+year = 1931
+default_style = ["woolf-stream-of-consciousness"]
+default_type = ["novel", "book"]
+
+[[source]]
+shorthand = "Woolf-Dalloway"
+id = "woolf-dalloway"
+path = "Woolf-Dalloway"
+title = "Mrs. Dalloway"
+author = "Virginia Woolf"
+year = 1925
+default_style = ["woolf-stream-of-consciousness"]
+default_type = ["novel", "book"]
+
+[[source]]
+shorthand = "Tolstoy"
+id = "tolstoy"
+path = "Tolstoy"
+title = "Anna Karenina (Garnett translation)"
+author = "Leo Tolstoy"
+year = 1878
+default_style = ["tolstoy-moral-realism"]
+default_type = ["novel", "book"]

@@ -28,7 +28,8 @@ from .tool_responses import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_CORPUS_PATH = "~/Documents/writing-corpus"
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_DEFAULT_CORPUS_PATH = str(_REPO_ROOT / "corpus")
 _CONFIG_DIR = Path.home() / ".config" / "corpus-inference-query"
 _CONFIG_PATH = _CONFIG_DIR / "config.json"
 

@@ -676,7 +676,7 @@ class TestResolveCorpusPath:
         monkeypatch.delenv("CORPUS_INFERENCE_PATH", raising=False)
         with patch.object(_srv_mod, "_CONFIG_PATH", tmp_path / "nonexistent.json"):
             result = _srv_mod._resolve_corpus_path()
-        assert result == Path(os.path.expanduser("~/Documents/writing-corpus"))
+        assert result == Path(os.path.expanduser(_srv_mod._DEFAULT_CORPUS_PATH))
 
     def test_malformed_config_falls_back(self, monkeypatch, tmp_path):
         monkeypatch.delenv("CORPUS_INFERENCE_PATH", raising=False)
@@ -685,7 +685,7 @@ class TestResolveCorpusPath:
         with patch.object(_srv_mod, "_CONFIG_PATH", config_path):
             assert _srv_mod._load_config() == {}
             result = _srv_mod._resolve_corpus_path()
-        assert result == Path(os.path.expanduser("~/Documents/writing-corpus"))
+        assert result == Path(os.path.expanduser(_srv_mod._DEFAULT_CORPUS_PATH))
 
 
 # ---------------------------------------------------------------------------

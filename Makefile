@@ -7,13 +7,17 @@ MCP_LAUNCHER := $(ROOT)/scripts/mcp_launcher.sh
 MCP_BIN := $(ROOT)/.venv/bin/corpus-inference-query
 CORPUS ?= $(CORPUS_INFERENCE_PATH)
 
-.PHONY: setup doctor init-env deps ingest dry-run install-mcp \
+.PHONY: setup doctor init-env deps ingest ingest-default dry-run install-mcp \
 	install-claude-mcp install-auggie-mcp uninstall-mcp test lint clean-cache
 
-## Full idempotent bootstrap: preflight -> env seed -> deps -> MCP registration.
-## Ingest afterwards with: make ingest CORPUS=/path/to/corpus
-setup: doctor init-env deps install-mcp
-	@echo "setup complete — next: make ingest CORPUS=/path/to/your/corpus"
+## Full idempotent bootstrap: preflight -> env seed -> deps -> MCP registration -> ingest bundled corpus.
+## Swap in your own corpus later with: make ingest CORPUS=/path/to/corpus
+setup: doctor init-env deps install-mcp ingest-default
+	@echo "setup complete — bundled corpus/ is ready to query"
+
+## Ingest the bundled default corpus (corpus/) so the server works out of the box.
+ingest-default: $(MCP_BIN)
+	$(MCP_BIN) ingest "$(ROOT)/corpus"
 
 ## Preflight: verify required tooling before anything mutates state.
 doctor:
