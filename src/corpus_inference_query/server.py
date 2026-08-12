@@ -10,9 +10,17 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from .corpus_repository import CorpusRepository
+from .flow import FLOW_UNITS
+from .flow import check_flow as run_flow_check
+from .meter import METERS
+from .meter import check_meter as run_meter_check
 from .tool_responses import (
     format_check_against_standards,
     format_check_against_standards_json,
+    format_check_flow,
+    format_check_flow_json,
+    format_check_meter,
+    format_check_meter_json,
     format_list_corpora,
     format_reload,
     format_validate_boundary,
@@ -144,6 +152,69 @@ def check_against_standards(text: str, types: list[str] | None = None, format: s
 
 
 @mcp.tool()
+def check_meter(text: str, meter: str = "iambic_pentameter", tolerance: int = 1, format: str = "markdown") -> str:
+    """Check verse lines against a named meter's expected syllable count.
+
+    Deterministic line-length scan built on approximate vowel-group syllable
+    counting — verifies syllables per line, NOT stress placement (an
+    off-stress but 10-syllable line passes). Blank lines, markdown headings,
+    and [AUTHOR: ...] placeholder lines are skipped as scaffolding.
+
+    Args:
+        text: Verse to scan (one verse line per text line).
+        meter: Named meter. One of: iambic_dimeter (4), iambic_trimeter (6),
+            iambic_tetrameter (8), iambic_pentameter (10), iambic_hexameter
+            (12), trochaic_tetrameter (8), trochaic_octameter (16),
+            anapestic_tetrameter (12), dactylic_hexameter (18), common_meter
+            (alternating 8/6). Default iambic_pentameter.
+        tolerance: Allowed +/- syllable deviation per line. Default 1.
+        format: "markdown" (default, scan table) or "json" (machine-readable
+            object with status, conformity_ratio, off_meter_lines — for
+            orchestrators storing the result as a blackboard artifact).
+    """
+    try:
+        result = run_meter_check(text, meter=meter, tolerance=max(0, tolerance))
+    except ValueError as exc:
+        if format == "json":
+            return json.dumps({"status": "error", "error": str(exc), "known_meters": sorted(METERS)}, indent=2)
+        return f"Error: {exc}"
+    if format == "json":
+        return format_check_meter_json(result)
+    return format_check_meter(result)
+
+
+@mcp.tool()
+def check_flow(text: str, unit: str = "auto", format: str = "markdown") -> str:
+    """Scan prose or verse for cadence monotony: opener runs, opener dominance,
+    repeated phrase scaffolds, and uniform sentence lengths.
+
+    Deterministic repetition census — it counts what repeats and how unit
+    lengths vary, and does NOT judge whether a repetition is deliberate
+    anaphora or machine flatline (that judgment belongs to the cadence
+    reviewer). Blank lines, markdown headings, and [AUTHOR: ...] placeholder
+    lines are skipped as scaffolding.
+
+    Args:
+        text: Prose or verse to scan.
+        unit: Scan unit. "auto" (default) treats the text as verse lines when
+            most lines lack terminal punctuation, else prose sentences;
+            "lines" and "sentences" force the unit.
+        format: "markdown" (default, findings table) or "json"
+            (machine-readable object with status, findings — for
+            orchestrators storing the result as a blackboard artifact).
+    """
+    try:
+        result = run_flow_check(text, unit=unit)
+    except ValueError as exc:
+        if format == "json":
+            return json.dumps({"status": "error", "error": str(exc), "known_units": list(FLOW_UNITS)}, indent=2)
+        return f"Error: {exc}"
+    if format == "json":
+        return format_check_flow_json(result)
+    return format_check_flow(result)
+
+
+@mcp.tool()
 def find_similar_voice(text: str, corpus: str = "personal", top_k: int = 5, max_tokens: int = 1500) -> str:
     """Find corpus passages with voice similar to provided text.
 
@@ -197,7 +268,9 @@ def validate_boundary(payload: str, boundary: str = "review") -> str:
         payload: JSON string of the artifact (review, debate, or scorecard).
         boundary: Which boundary model to validate against:
             "review" (Phase 2 EditorialReview), "debate" (Phase 3
-            DebateResponse), or "scorecard" (five-dimension Scorecard).
+            DebateResponse), "scorecard" (five-dimension Scorecard),
+            "ai_smell", "parataxis_scorecard", "draft", or "cadence"
+            (CadenceVerdict — flow level plus per-passage directives).
 
     Returns a JSON object: {"status": "valid", ...} echoing the normalized
     artifact plus derived flags (e.g. over_smoothing_signature for

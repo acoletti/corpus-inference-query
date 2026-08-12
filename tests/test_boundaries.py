@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from corpus_inference_query.boundaries import (
     BOUNDARY_MODELS,
     AISmellBoundary,
+    CadenceVerdict,
     DebateResponse,
     DraftManifest,
     EditorialReview,
@@ -285,3 +286,55 @@ class TestParataxisScorecard:
             string_rhythm=4, unit_weight=4, landing=5, fake_parataxis_count=0)
         assert flat.flatline_signature()
         assert not pulsing.flatline_signature()
+
+
+def _valid_cadence(level: str = "monotone") -> dict:
+    findings = []
+    if level == "monotone":
+        findings = [{
+            "quote": "and still a tenant scratches at the wood,",
+            "issue": "opener_run",
+            "directive": "Vary three of the ten consecutive and-openers: open one line on the verb, one on the object, keep the rest.",
+        }]
+    return {
+        "persona": "Cadence Reviewer",
+        "flow_level": level,
+        "findings": findings,
+        "arc_note": "The poem repeats without building; the turn arrives only in the final couplet.",
+        "verdict": "Monotone: one opener carries eleven of twelve lines.",
+    }
+
+
+class TestCadenceVerdict:
+    def test_valid_verdict_parses(self) -> None:
+        verdict = CadenceVerdict.model_validate(_valid_cadence())
+        assert verdict.flow_level == "monotone"
+
+    def test_monotone_requires_findings(self) -> None:
+        data = _valid_cadence()
+        data["findings"] = []
+        with pytest.raises(ValidationError):
+            CadenceVerdict.model_validate(data)
+
+    def test_varied_allows_no_findings(self) -> None:
+        verdict = CadenceVerdict.model_validate(_valid_cadence(level="varied"))
+        assert verdict.findings == []
+
+    def test_unknown_issue_rejected(self) -> None:
+        data = _valid_cadence()
+        data["findings"][0]["issue"] = "boring"
+        with pytest.raises(ValidationError):
+            CadenceVerdict.model_validate(data)
+
+    def test_smelly_directive_rejected(self) -> None:
+        data = _valid_cadence()
+        data["findings"][0]["directive"] = "It isn't repetition, it's a seamless tapestry."
+        with pytest.raises(ValidationError):
+            CadenceVerdict.model_validate(data)
+
+    def test_registered_in_boundary_models(self) -> None:
+        out = json.loads(format_validate_boundary(
+            json.dumps(_valid_cadence()), "cadence", BOUNDARY_MODELS,
+        ))
+        assert out["status"] == "valid"
+        assert out["boundary"] == "cadence"

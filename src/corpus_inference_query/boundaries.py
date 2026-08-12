@@ -208,6 +208,64 @@ class ParataxisScorecard(_Frozen):
         return self.string_rhythm <= 2 and self.unit_weight <= 2
 
 
+FlowLevel = Literal["varied", "acceptable", "monotone"]
+
+CADENCE_ISSUES = (
+    "opener_run",
+    "opener_dominance",
+    "repeated_ngram",
+    "uniform_length",
+    "connective_monotony",
+    "missing_turn",
+    "flat_arc",
+)
+
+
+class CadenceFinding(_Frozen):
+    """One flow/monotony finding with its additive repair directive."""
+
+    quote: str = Field(min_length=1)
+    issue: str = Field(min_length=1)
+    directive: str = Field(min_length=1)
+
+    @field_validator("issue")
+    @classmethod
+    def _issue_is_known(cls, v: str) -> str:
+        if v not in CADENCE_ISSUES:
+            raise ValueError(f"unknown issue '{v}'; expected one of {sorted(CADENCE_ISSUES)}")
+        return v
+
+    @field_validator("directive")
+    @classmethod
+    def _directive_is_clean(cls, v: str) -> str:
+        hits = smell_flags(v)
+        if hits:
+            raise ValueError(
+                f"directive itself carries banned constructions: {hits}; "
+                "state what is, never what is not")
+        return v
+
+
+class CadenceVerdict(_Frozen):
+    """Cadence Reviewer verdict — flow level plus per-passage directives.
+
+    A `monotone` flow_level joins the Drafter repair loop: each finding's
+    directive is applied in the single shared repair pass.
+    """
+
+    persona: str = Field(min_length=1)
+    flow_level: FlowLevel
+    findings: list[CadenceFinding] = Field(default_factory=list)
+    arc_note: str = Field(min_length=1)
+    verdict: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _findings_support_level(self) -> "CadenceVerdict":
+        if self.flow_level == "monotone" and not self.findings:
+            raise ValueError("monotone flow_level requires at least one finding")
+        return self
+
+
 DraftDisposition = Literal["applied", "placeholder", "deferred"]
 
 
@@ -252,4 +310,5 @@ BOUNDARY_MODELS: dict[str, type[BaseModel]] = {
     "ai_smell": AISmellBoundary,
     "parataxis_scorecard": ParataxisScorecard,
     "draft": DraftManifest,
+    "cadence": CadenceVerdict,
 }
