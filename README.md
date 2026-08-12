@@ -42,22 +42,26 @@ docs/superpowers/
 ## Prerequisites
 
 - Python 3.11+ and [`uv`](https://docs.astral.sh/uv/)
-- A directory of text files — unformatted is fine (`.txt`, `.md`, `.rst`, `.markdown`)
 - (Optional) `claude` and/or `auggie` CLIs for automatic MCP registration
+- (Optional) your own directory of text files — unformatted is fine
+  (`.txt`, `.md`, `.rst`, `.markdown`) — to replace the bundled default
 
 ## Quick Start
 
 ```bash
 git clone <repo-url> corpus-inference-query
 cd corpus-inference-query
-make setup                                    # doctor -> .env.local -> deps -> MCP registration
-make ingest CORPUS=/path/to/your/corpus       # chunk, cache, and embed the corpus
+make setup    # doctor -> .env.local -> deps -> MCP registration -> ingest bundled corpus
 ```
 
 `make setup` runs preflight checks (`make doctor`), seeds `.env.local` from
-`.env.example`, creates `.venv` with the vector extras, and registers
-`scripts/mcp_launcher.sh` with every detected MCP client (`claude`, `auggie`).
-Restart your MCP client afterwards.
+`.env.example`, creates `.venv` with the vector extras, registers
+`scripts/mcp_launcher.sh` with every detected MCP client (`claude`, `auggie`),
+and ingests the bundled `corpus/` directory (Woolf, Tolstoy, Fish) so the
+server is queryable immediately. Restart your MCP client afterwards.
+
+To use your own corpus instead, either set `CORPUS_INFERENCE_PATH` in
+`.env.local` or run `make ingest CORPUS=/path/to/your/corpus`.
 
 ## Ingestion
 
@@ -83,7 +87,7 @@ startup the server resolves the corpus path in this order:
 
 1. `CORPUS_INFERENCE_PATH` environment variable (see `.env.local`)
 2. `corpus_path` in `~/.config/corpus-inference-query/config.json`
-3. Default fallback: `~/Documents/writing-corpus`
+3. Default fallback: the bundled `corpus/` directory in this repo
 
 `corpus-inference-query init` remains as an interactive prompt that calls the
 same ingestion pipeline. Corpora described by a `corpus.toml` manifest keep
@@ -93,8 +97,9 @@ working; the ingest cache takes precedence when present.
 
 | Target | Purpose |
 |---|---|
-| `make setup` | Full bootstrap: doctor → init-env → deps → install-mcp |
+| `make setup` | Full bootstrap: doctor → init-env → deps → install-mcp → ingest-default |
 | `make doctor` | Preflight tool checks (uv, python3, claude, auggie) |
+| `make ingest-default` | Ingest the bundled `corpus/` directory |
 | `make ingest CORPUS=…` | Ingest a corpus directory (chunk + cache + embed) |
 | `make dry-run CORPUS=…` | Preview chunking without writing anything |
 | `make install-mcp` / `uninstall-mcp` | (De)register with claude + auggie CLIs |
@@ -107,7 +112,7 @@ Set these in `.env.local` (sourced by `scripts/mcp_launcher.sh`):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CORPUS_INFERENCE_PATH` | `~/Documents/writing-corpus` | Path to the writing corpus directory |
+| `CORPUS_INFERENCE_PATH` | bundled `corpus/` in this repo | Path to the writing corpus directory |
 | `CORPUS_INFERENCE_CACHE_PATH` | `~/.cache/corpus-inference-query/lance` | Where the vector index is cached |
 | `CORPUS_INFERENCE_INGEST_CACHE` | `~/.cache/corpus-inference-query/ingest` | Where ingested sections are cached |
 | `CORPUS_INFERENCE_EMBED_MODEL` | `BAAI/bge-small-en-v1.5` | fastembed model name for vector search |
