@@ -8,7 +8,10 @@ MCP_BIN := $(ROOT)/.venv/bin/corpus-inference-query
 CORPUS ?= $(CORPUS_INFERENCE_PATH)
 
 .PHONY: setup doctor init-env deps ingest ingest-default dry-run install-mcp \
-	install-claude-mcp install-auggie-mcp uninstall-mcp test lint clean-cache
+	install-claude-mcp install-auggie-mcp install-hermes-mcp uninstall-hermes-mcp \
+	uninstall-mcp test test-hermes lint clean-cache
+
+HERMES_PYTHON ?= $(HOME)/.hermes/hermes-agent/venv/bin/python
 
 ## Full idempotent bootstrap: preflight -> env seed -> deps -> MCP registration -> ingest bundled corpus.
 ## Swap in your own corpus later with: make ingest CORPUS=/path/to/corpus
@@ -64,7 +67,7 @@ dry-run: $(MCP_BIN)
 	$(MCP_BIN) ingest "$(CORPUS)" --dry-run
 
 ## Register the launcher with every detected MCP client.
-install-mcp: $(MCP_BIN) install-claude-mcp install-auggie-mcp
+install-mcp: $(MCP_BIN) install-claude-mcp install-auggie-mcp install-hermes-mcp
 
 install-claude-mcp:
 	@if command -v claude >/dev/null 2>&1; then \
@@ -78,6 +81,25 @@ install-auggie-mcp:
 		auggie mcp add $(MCP_NAME) --replace --command $(MCP_LAUNCHER); \
 		auggie mcp list | grep $(MCP_NAME); \
 	else echo "auggie CLI not found — skipping"; fi
+
+## Register with Hermes Agent. Hermes has no `mcp add` CLI, so this edits
+## ~/.hermes/config.yaml directly (backed up, atomic, verified). Skips
+## cleanly when Hermes is not installed. Restart Hermes to pick it up.
+install-hermes-mcp:
+	@if [ -f "$(HOME)/.hermes/config.yaml" ]; then \
+		if [ -x "$(HERMES_PYTHON)" ]; then PY="$(HERMES_PYTHON)"; else PY=python3; fi; \
+		"$$PY" ./scripts/hermes_add.py --name $(MCP_NAME) --command $(MCP_LAUNCHER); \
+	else echo "Hermes Agent not found (~/.hermes/config.yaml) — skipping"; fi
+
+uninstall-hermes-mcp:
+	@if [ -f "$(HOME)/.hermes/config.yaml" ]; then \
+		if [ -x "$(HERMES_PYTHON)" ]; then PY="$(HERMES_PYTHON)"; else PY=python3; fi; \
+		"$$PY" ./scripts/hermes_add.py --name $(MCP_NAME) --remove; \
+	else echo "Hermes Agent not found — skipping"; fi
+
+## Regression tests for the Hermes registrar (uses throwaway config copies).
+test-hermes:
+	./scripts/test_hermes_add.sh
 
 uninstall-mcp:
 	-command -v claude >/dev/null 2>&1 && claude mcp remove $(MCP_NAME) --scope user 2>/dev/null || true
