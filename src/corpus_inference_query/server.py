@@ -10,15 +10,26 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from .corpus_repository import CorpusRepository
+from .flow import FLOW_UNITS
+from .flow import check_flow as run_flow_check
+from .meter import METERS
+from .meter import check_meter as run_meter_check
 from .tool_responses import (
     format_check_against_standards,
+    format_check_against_standards_json,
+    format_check_flow,
+    format_check_flow_json,
+    format_check_meter,
+    format_check_meter_json,
     format_list_corpora,
     format_reload,
+    format_validate_boundary,
 )
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_CORPUS_PATH = "~/Documents/writing-corpus"
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_DEFAULT_CORPUS_PATH = str(_REPO_ROOT / "corpus")
 _CONFIG_DIR = Path.home() / ".config" / "corpus-inference-query"
 _CONFIG_PATH = _CONFIG_DIR / "config.json"
 
@@ -124,14 +135,84 @@ def find_exemplars(style: list[str] | None = None, type_filter: list[str] | None
 
 
 @mcp.tool()
-def check_against_standards(text: str, types: list[str] | None = None) -> str:
+def check_against_standards(text: str, types: list[str] | None = None, format: str = "markdown") -> str:
     """Check writing against the mechanical writing-standards rules.
 
     Args:
         text: Writing to check.
         types: Writing type context (e.g. ["essay"]). Inferred from text shape if omitted.
+        format: Output format: "markdown" (default, human-readable table) or
+            "json" (machine-readable object with status, violation_count,
+            violations, skipped_rules — for orchestrators storing the result
+            as a blackboard artifact).
     """
-    return format_check_against_standards(_get_repo().check_against_standards(text, types))
+    result = _get_repo().check_against_standards(text, types)
+    if format == "json":
+        return format_check_against_standards_json(result)
+    return format_check_against_standards(result)
+
+
+@mcp.tool()
+def check_meter(text: str, meter: str = "iambic_pentameter", tolerance: int = 1, format: str = "markdown") -> str:
+    """Check verse lines against a named meter's expected syllable count.
+
+    Deterministic line-length scan built on approximate vowel-group syllable
+    counting — verifies syllables per line, NOT stress placement (an
+    off-stress but 10-syllable line passes). Blank lines, markdown headings,
+    and [AUTHOR: ...] placeholder lines are skipped as scaffolding.
+
+    Args:
+        text: Verse to scan (one verse line per text line).
+        meter: Named meter. One of: iambic_dimeter (4), iambic_trimeter (6),
+            iambic_tetrameter (8), iambic_pentameter (10), iambic_hexameter
+            (12), trochaic_tetrameter (8), trochaic_octameter (16),
+            anapestic_tetrameter (12), dactylic_hexameter (18), common_meter
+            (alternating 8/6). Default iambic_pentameter.
+        tolerance: Allowed +/- syllable deviation per line. Default 1.
+        format: "markdown" (default, scan table) or "json" (machine-readable
+            object with status, conformity_ratio, off_meter_lines — for
+            orchestrators storing the result as a blackboard artifact).
+    """
+    try:
+        result = run_meter_check(text, meter=meter, tolerance=max(0, tolerance))
+    except ValueError as exc:
+        if format == "json":
+            return json.dumps({"status": "error", "error": str(exc), "known_meters": sorted(METERS)}, indent=2)
+        return f"Error: {exc}"
+    if format == "json":
+        return format_check_meter_json(result)
+    return format_check_meter(result)
+
+
+@mcp.tool()
+def check_flow(text: str, unit: str = "auto", format: str = "markdown") -> str:
+    """Scan prose or verse for cadence monotony: opener runs, opener dominance,
+    repeated phrase scaffolds, and uniform sentence lengths.
+
+    Deterministic repetition census — it counts what repeats and how unit
+    lengths vary, and does NOT judge whether a repetition is deliberate
+    anaphora or machine flatline (that judgment belongs to the cadence
+    reviewer). Blank lines, markdown headings, and [AUTHOR: ...] placeholder
+    lines are skipped as scaffolding.
+
+    Args:
+        text: Prose or verse to scan.
+        unit: Scan unit. "auto" (default) treats the text as verse lines when
+            most lines lack terminal punctuation, else prose sentences;
+            "lines" and "sentences" force the unit.
+        format: "markdown" (default, findings table) or "json"
+            (machine-readable object with status, findings — for
+            orchestrators storing the result as a blackboard artifact).
+    """
+    try:
+        result = run_flow_check(text, unit=unit)
+    except ValueError as exc:
+        if format == "json":
+            return json.dumps({"status": "error", "error": str(exc), "known_units": list(FLOW_UNITS)}, indent=2)
+        return f"Error: {exc}"
+    if format == "json":
+        return format_check_flow_json(result)
+    return format_check_flow(result)
 
 
 @mcp.tool()
@@ -178,6 +259,28 @@ def suggest_rewrite(text: str, target_style: str, top_k: int = 5, max_tokens: in
     top_k = max(1, min(top_k, _TOP_K_CEILING))
     max_tokens = max(1, min(max_tokens, _MAX_TOKENS_CEILING))
     return _get_repo().suggest_rewrite(text, target_style, top_k=top_k, max_chars=max_tokens * _CHARS_PER_TOKEN)
+
+
+@mcp.tool()
+def validate_boundary(payload: str, boundary: str = "review") -> str:
+    """Validate an LLM-produced editorial artifact against its writing boundary.
+
+    Args:
+        payload: JSON string of the artifact (review, debate, or scorecard).
+        boundary: Which boundary model to validate against:
+            "review" (Phase 2 EditorialReview), "debate" (Phase 3
+            DebateResponse), "scorecard" (five-dimension Scorecard),
+            "ai_smell", "parataxis_scorecard", "draft", or "cadence"
+            (CadenceVerdict — flow level plus per-passage directives).
+
+    Returns a JSON object: {"status": "valid", ...} echoing the normalized
+    artifact plus derived flags (e.g. over_smoothing_signature for
+    scorecards), or {"status": "invalid", "errors": [...]} with per-field
+    Pydantic error locations for repair-and-retry loops.
+    """
+    from .boundaries import BOUNDARY_MODELS  # noqa: PLC0415
+
+    return format_validate_boundary(payload, boundary, BOUNDARY_MODELS)
 
 
 @mcp.tool()

@@ -10,6 +10,7 @@ from corpus_inference_query.detectors.types import (
 )
 from corpus_inference_query.tool_responses import (
     format_check_against_standards,
+    format_check_against_standards_json,
     format_list_corpora,
     format_reload,
 )
@@ -210,3 +211,41 @@ class TestFormatCheckAgainstStandards:
         formatted = format_check_against_standards(result)
         assert "§1" in formatted
         assert "**Skipped rules**: §7 (type_unknown)." in formatted
+
+
+class TestFormatCheckAgainstStandardsJson:
+    def test_clean_result(self) -> None:
+        import json
+
+        result = StandardsCheckResult(violations=[], skipped_rules=[])
+        payload = json.loads(format_check_against_standards_json(result))
+        assert payload == {
+            "status": "clean",
+            "violation_count": 0,
+            "violations": [],
+            "skipped_rules": [],
+        }
+
+    def test_violations_and_skips_serialize(self) -> None:
+        import json
+
+        result = StandardsCheckResult(
+            violations=[
+                RuleViolation(
+                    rule_id="§3",
+                    rule_title="Concision",
+                    severity="warning",
+                    span=(0, 10),
+                    snippet="each and every",
+                    exemplar_citation="Strunk §Omit Needless Words",
+                    suggested_rewrite_from_exemplar="Vigorous writing is concise.",
+                ),
+            ],
+            skipped_rules=[SkippedRule(rule_id="§13", reason_code="personal_corpus_empty")],
+        )
+        payload = json.loads(format_check_against_standards_json(result))
+        assert payload["status"] == "violations"
+        assert payload["violation_count"] == 1
+        assert payload["violations"][0]["rule_id"] == "§3"
+        assert payload["violations"][0]["span"] == [0, 10]
+        assert payload["skipped_rules"][0]["reason_code"] == "personal_corpus_empty"

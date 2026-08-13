@@ -9,3 +9,4 @@ src/*.egg-info/
 .claude/
 .env.local
 .augment/
+.DS_Store
